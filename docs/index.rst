@@ -1,7 +1,7 @@
 SIMSHIFT
 ========
 
-.. image:: https://github.com/ml-jku/simshift/blob/res/figure_1.png
+.. image:: https://github.com/psetinek/simshift/blob/main/res/figure_1.png?raw=true
    :alt: simshift_figure1.png
 
 

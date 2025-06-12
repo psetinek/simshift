@@ -8,14 +8,16 @@ unsupervised model strategies. We will walk you through some quick examples in t
 Adding Datasets
 ---------------
 
-SIMSHIFT provides a modular interface for datasets via a ``BaseDataset`` class, which all built-in datasets inherit from. This base class offers standard utilities for downloading data, loading it into memory, computing normalization statistics, and applying normalization transforms.
+SIMSHIFT provides a modular interface for datasets via a ``BaseDataset`` class (`source code <https://github.com/psetinek/simshift/blob/main/simshift/data/base_data.py#L54>`_),
+which all built-in datasets inherit from. This base class offers standard utilities for downloading data, loading it into memory, computing normalization statistics, and applying normalization transforms.
 
 To add a custom dataset, you have two options:
 
 1. **Inherit from** ``BaseDataset`` and override any relevant methods.
 2. **Implement from scratch** by inheriting from ``torch.utils.data.Dataset`` if your use case deviates significantly.
 
-We recommend reviewing the implementation in ``simshift/data/__init__.py`` (ADD LINK) for a concrete example that inherits from the ``BaseDataset`` (ADD LINK) class.
+We recommend reviewing the implementation in ``simshift/data/rolling_data.py`` (`source code <https://github.com/psetinek/simshift/blob/main/simshift/data/rolling_data.py>`_)
+for a concrete example that inherits from the ``BaseDataset`` class.
 
 In addition to your dataset class, you must define a ``get_dataset`` function that loads and returns the dataset, along with its normalization stats. Below is a minimal working example:
 
@@ -46,7 +48,7 @@ In addition to your dataset class, you must define a ``get_dataset`` function th
 
         return (dataset_source, dataset_target), normalization_stats
 
-This function must be registered in the dataset builder dictionary located in ``simshift/data/__init__.py`` (ADD LINK) as follows:
+This function must be registered in the dataset builder dictionary located in ``simshift/data/__init__.py`` (`source code <https://github.com/psetinek/simshift/blob/main/simshift/data/__init__.py>`_) as follows:
 
 .. code-block:: python
 
@@ -58,13 +60,13 @@ This function must be registered in the dataset builder dictionary located in ``
         "my_new_dataset": get_my_new_dataset,
     }
 
-Finally, create a configuration file named, e.g. ``my_new_dataset.yaml`` inside the dataset config directory (ADD LINK). Once this is done, your new dataset can be used in any training or evaluation pipeline by referencing it in your config.
+Finally, create a configuration file named, e.g. ``my_new_dataset.yaml`` inside the dataset `config directory <https://github.com/psetinek/simshift/tree/main/configs/dataset>`_. Once this is done, your new dataset can be used in any training or evaluation pipeline by referencing it in your config.
 
 
 Adding Models
 -------------
 
-To add a new model, simply create a class inheriting from ``torch.nn.Module`` in the models folder (ADD LINK) and decorate it with the `@register_model` decorator. An example template would look something like:
+To add a new model, simply create a class inheriting from ``torch.nn.Module`` in the `models folder <https://github.com/psetinek/simshift/tree/main/simshift/models>`_  and decorate it with the ``@register_model`` decorator. An example template would look something like:
 
 .. code-block:: python
 
@@ -78,7 +80,7 @@ To add a new model, simply create a class inheriting from ``torch.nn.Module`` in
        def forward(self, x):
            ...
 
-Once registered, create a model config (see e.g. the example config for PointNet (ADD LINK)). It could look something like this:
+Once registered, create a model config (see e.g. the example config for `PointNet <https://github.com/psetinek/simshift/blob/main/configs/model/pointnet.yaml>`_). It could look something like this:
 
 .. code-block:: yaml
 
@@ -87,15 +89,15 @@ Once registered, create a model config (see e.g. the example config for PointNet
         ...
         ...
 
-To then use your new model, simply link your model config in the main.yaml (ADD LINK) config file.
+To then use your new model, simply link your model config in the ``main.yaml`` (`source code <https://github.com/psetinek/simshift/blob/main/configs/main.yaml>`_) config file.
 
 
 Adding Unsupervised Domain Adaptation Algorithms
 ------------------------------------------------
 
-New UDA algorithms should inherit from the provided ``ccc`` (ADD LINK) class. You simply have to add any configuration hyperparameters as needed, and implement an
+New UDA algorithms should inherit from the provided ``DAAlgorithm`` (`source code <https://github.com/psetinek/simshift/blob/main/simshift/da_algorithms/base_da_algorithm.py#L16>`_) class. You simply have to add any configuration hyperparameters as needed, and implement an
 ``_update`` method. This ``_update`` method should compute all needed losses for optimization and store them in ``self.loss`` and ``self.loss_dict``. Just as when adding new models, new UDA algorithms should registered via the ``@register_da_method`` decorator. For an example, see the ``DeepCORAL``
-(ADD LINK) class. A minimal example template could look like this:
+class (`source code <https://github.com/psetinek/simshift/blob/main/simshift/da_algorithms/deep_coral.py#L11>`_). A minimal example template could look like this:
 
 .. code-block:: python
 
@@ -135,7 +137,7 @@ New UDA algorithms should inherit from the provided ``ccc`` (ADD LINK) class. Yo
         def _my_new_da_loss(self, source_features, target_features):
             ...
 
-Once registered, create a config for you UDA algorithm (see e.g. the example config for cmd (ADD LINK)). It could look something like this:
+Once registered, create a config for you UDA algorithm. See e.g. the example config for cmd (`source code <https://github.com/psetinek/simshift/blob/main/configs/da_algorithm/cmd.yaml>_`). It could look something like this:
 
 .. code-block:: yaml
 
@@ -145,14 +147,14 @@ Once registered, create a config for you UDA algorithm (see e.g. the example con
         ...
         ...
 
-To then use your new algorithm, simply link the respective config in the main.yaml (ADD LINK) config file and you are good to go!
+To then use your new algorithm, simply link the respective config in the ``main.yaml`` config file and you are good to go!
 
 
 Adding Model Selection Strategies
 ---------------------------------
 
-To add an unsupervised model selection method, please register a function with `@register_model_selection_algorithm`. For an example, see the DEV implementation (ADD LINK).
-Currently, the function can only take certain arguments that are computed in ``model_selector.py`` (ADD LINK). So if you need additional arguments, please modify this file and
+To add an unsupervised model selection method, please register a function with `@register_model_selection_algorithm`. For an example, see the DEV implementation (`source code <https://github.com/psetinek/simshift/blob/main/simshift/model_selection/dev.py#L7>`_).
+Currently, the function can only take certain arguments that are computed in ``model_selector.py`` (`source code <https://github.com/psetinek/simshift/blob/main/simshift/model_selection/model_selector.py#L16>`_). So if you need additional arguments, please modify this file and
 pass them there.
 
-Once created and registered, you can use your new model selection algorithm, by adding it to the arguments when running ``run_model_selection`` (ADD LINK).
+Once created and registered, you can use your new model selection algorithm, by adding it to the arguments when running ``run_model_selection`` (`source code <https://github.com/psetinek/simshift/blob/main/run_model_selection.py>`_).

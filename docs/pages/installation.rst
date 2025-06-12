@@ -23,7 +23,7 @@ We recommend using Python ``3.11``, which was used during development and testin
 
 First, install your desired version of PyTorch. SIMSHIFT was tested with PyTorch ``2.6.0``.
 
-Follow the official [`PyTorch installation instructions <https://pytorch.org/get-started/locally/>`_].
+Follow the official `PyTorch installation instructions <https://pytorch.org/get-started/locally/>`_.
 
 For example, on Linux with CUDA ``12.6``:
 
@@ -33,7 +33,7 @@ For example, on Linux with CUDA ``12.6``:
 
 **4. Install PyTorch Geometric (PyG)**
 
-SIMSHIFT depends on [`PyTorch Geometric <https://pytorch-geometric.readthedocs.io/>`_]. You can install the core package with:
+SIMSHIFT depends on `PyTorch Geometric <https://pytorch-geometric.readthedocs.io/>`_. You can install the core package with:
 
 .. code-block:: bash
 
@@ -49,7 +49,7 @@ To check your current setup:
 
     python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA {torch.version.cuda}')"
 
-Then install the appropriate version following the instructions [`here <https://pypi.org/project/torch-scatter/>`_].
+Then install the appropriate version following the instructions `here <https://pypi.org/project/torch-scatter/>`_.
 
 For PyTorch ``2.6.0`` and CUDA ``12.6``, use:
 
