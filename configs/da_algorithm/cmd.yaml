@@ -1,0 +1,5 @@
+name: cmd
+da_loss_weight: 0.1
+kwargs:
+  n_moments: 5
+  scaling_factor: 2

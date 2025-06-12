@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - dataset: rolling  # rolling, forming, motor, heatsink
+  - model: pointnet  # pointnet, gnn, transolver, upt, pointnet_large, transolver_large
+  - da_algorithm: deep_coral  # deep_coral, cmd, dann
+  - training: default  # default, default_heatsink
+  - validation: default
+  - logging: wandb
+
+seed: 42
+output_path: debug/  # path where checkpoints are saved

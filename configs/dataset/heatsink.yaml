@@ -1,0 +1,8 @@
+name: heatsink
+# data path on the institute servers, if not provided it will use the default path
+path: /system/user/publicdata/lcm/heatsink/fixed_splits  # if data is not available at the given path, it will be downloaded
+normalization: zscore
+difficulty: medium
+out_deformation: False
+space: 3
+n_subsampled_nodes: 16000

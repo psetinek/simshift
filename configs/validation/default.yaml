@@ -1,0 +1,5 @@
+metrics:
+  - mse_avg
+  - ae_avg
+  - mse_max
+  - ae_max

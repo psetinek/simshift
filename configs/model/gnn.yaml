@@ -1,0 +1,7 @@
+name: GraphSAGE
+hparams:
+  gnn_base: 128
+  latent_channels: 8
+  num_layers: 4
+  dropout_prob: 0
+  conditioning_mode: film

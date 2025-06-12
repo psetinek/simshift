@@ -1,0 +1,5 @@
+writer: wandb
+wandb_project: rolling
+wandb_entity: lcm
+experiment_id: debug
+run_id: null

@@ -1,0 +1,7 @@
+name: rolling
+# data path on the institute servers, if not provided it will use the default path
+path: /system/user/publicdata/lcm/rolling/fixed_splits  # if data is not available at the given path, it will be downloaded
+normalization: zscore
+difficulty: medium
+out_deformation: True
+space: 2

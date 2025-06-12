@@ -1,0 +1,4 @@
+name: DANN
+da_loss_weight: 0.1
+kwargs:
+  discriminator_hidden_sizes: [16, 32, 16]

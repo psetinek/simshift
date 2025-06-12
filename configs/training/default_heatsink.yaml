@@ -1,0 +1,11 @@
+batch_size: 16
+lr: 1e-3
+weight_decay: 1e-5
+n_epochs: 3000
+early_stopping_patience: 500
+num_workers: 0  # use 0 workers as it is much faster for the rolling dataset in memory
+scheduler: cosine
+gradient_clipping: true
+use_ema: true
+ema_decay: 0.95
+use_amp: True

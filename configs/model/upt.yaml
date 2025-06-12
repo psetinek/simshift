@@ -1,0 +1,10 @@
+name: UPT
+hparams:
+  latent_channels: 8
+  upt_base: 192
+  app_depth: 8
+  dec_depth: 4
+  num_supernodes: 4096
+  supernodes_radius: 0.05
+  supernodes_max_neighbours: 32
+  num_heads: 3

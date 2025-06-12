@@ -1,0 +1,5 @@
+name: PointMLP
+hparams:
+  pointmlp_base: 64
+  latent_channels: 8
+  dropout_prob: 0
