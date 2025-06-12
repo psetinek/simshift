@@ -1,0 +1,16 @@
+*__pycache__*
+.idea/
+wandb/
+*outputs*
+.vscode/
+*.out
+tmp/
+*.pkl
+multirun/
+*.pth
+scratch/
+datasets/
+internal/model_plots/
+*.egg-info*
+docs/_build
+.DS_Store*
