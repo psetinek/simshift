@@ -1,8 +1,18 @@
 # SIMSHIFT: A Benchmark for Adapting Neural Surrogates to Distribution Shifts
 
+<div align="center">
+
+[![Paper](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)](https://arxiv.org/pdf/TODO)
+[![Docs](https://img.shields.io/readthedocs/simshift/latest)](https://simshift.readthedocs.io/en/latest/index.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[![python](https://img.shields.io/badge/-Python_3.11-blue?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
+[![pytorch](https://img.shields.io/badge/PyTorch_2.6-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/docs/2.6/)
+[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
+
 ![Figure 1](./res/figure_1.png)
+
+</div>
 
 > Paper: link_to_be_added_upon_publication
 >
@@ -26,7 +36,7 @@ All the datasets are hosted on Huggingface at [https://huggingface.co/datasets/s
 Clone the repo:
 
 ```bash
-git clone <path_to_repo_upon_publication>
+git clone https://github.com/psetinek/simshift.git
 cd simshift
 ```
 
@@ -69,7 +79,9 @@ pip install -e .
 
 #### 2. Tutorial notebooks
 
-To get familiar with the capabilities of this repository, we provide a [`tutorial notebook`](./notebooks/tutorial.ipynb) showing easy model training and result evaluation and visualization.
+To get familiar with the capabilities of this repository, we provide a [`tutorial notebook`](./notebooks/tutorial.ipynb) showing easy model training and result evaluation and visualization. [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/psetinek/simshift/blob/main/notebooks/tutorial.ipynb)
+
+Please also take a look at the [documentation](https://simshift.readthedocs.io/en/latest/) of the package.
 
 #### 3. Paper results reproduciblility
 

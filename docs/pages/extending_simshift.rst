@@ -153,7 +153,7 @@ To then use your new algorithm, simply link the respective config in the ``main.
 Adding Model Selection Strategies
 ---------------------------------
 
-To add an unsupervised model selection method, please register a function with `@register_model_selection_algorithm`. For an example, see the DEV implementation (`source code <https://github.com/psetinek/simshift/blob/main/simshift/model_selection/dev.py#L7>`_).
+To add an unsupervised model selection method, please register a function with ``@register_model_selection_algorithm``. For an example, see the DEV implementation (`source code <https://github.com/psetinek/simshift/blob/main/simshift/model_selection/dev.py#L7>`_).
 Currently, the function can only take certain arguments that are computed in ``model_selector.py`` (`source code <https://github.com/psetinek/simshift/blob/main/simshift/model_selection/model_selector.py#L16>`_). So if you need additional arguments, please modify this file and
 pass them there.
 
