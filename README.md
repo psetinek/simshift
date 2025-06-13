@@ -8,7 +8,7 @@
 
 [![python](https://img.shields.io/badge/-Python_3.11-blue?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![pytorch](https://img.shields.io/badge/PyTorch_2.6-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/docs/2.6/)
-[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
+[![hydra](https://img.shields.io/badge/Hydra_1.3-89b8cd)](https://hydra.cc/)
 
 ![Figure 1](./res/figure_1.png)
 
