@@ -1,6 +1,5 @@
 name: forming
-# data path on the institute servers, if not provided it will use the default path
-path: /system/user/publicdata/lcm/forming/fixed_splits  # if data is not available at the given path, it will be downloaded
+path: datasets/forming  # if data is not available at the given path, it will be downloaded
 normalization: zscore
 difficulty: medium
 space: 2

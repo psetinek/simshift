@@ -1,5 +1,5 @@
 writer: wandb
-wandb_project: rolling
-wandb_entity: lcm
-experiment_id: debug
+wandb_project: simshift
+wandb_entity: simshift_entity
+experiment_id: my_experiment
 run_id: null
