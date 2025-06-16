@@ -14,7 +14,7 @@
 
 </div>
 
-> Paper: link_to_be_added_upon_publication
+> Paper: https://arxiv.org/abs/2506.12007
 >
 > Authors: Paul Setinek, Gianluca Galletti, Thomas Gross, Dominik Schnürer, Johannes Brandstetter, Werner Zellinger
 
