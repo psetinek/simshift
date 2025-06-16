@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Paper](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)](https://arxiv.org/pdf/TODO)
+[![Paper](https://img.shields.io/badge/arXiv-2506.12007-b31b1b.svg)](https://arxiv.org/abs/2506.12007)
 [![Docs](https://img.shields.io/readthedocs/simshift/latest)](https://simshift.readthedocs.io/en/latest/index.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
