@@ -66,7 +66,7 @@ class ModelSelector:
             batch_size=self.batch_size,
             shuffle=False,
             collate_fn=trainset_source.collate,
-        )  # TODO: check if we need shuffling here!
+        )
         self.valloader_source = DataLoader(
             self.valset_source,
             batch_size=self.batch_size,

@@ -25,6 +25,7 @@ class MLP(nn.Module):
         last_act_fn: Optional[nn.Module] = None,
         bias: Union[bool, Sequence[bool]] = True,
         dropout_prob: float = 0.0,
+        batchnorm: bool = False,
     ):
         super().__init__()
         if isinstance(bias, bool):
@@ -34,6 +35,8 @@ class MLP(nn.Module):
         for i, (lat_i, lat_i2) in enumerate(zip(latents, latents[1:], strict=False)):
             mlp.append(nn.Linear(lat_i, lat_i2, bias=bias[i]))
             if i != len(latents) - 2:
+                if batchnorm:
+                    mlp.append(nn.BatchNorm1d(lat_i2))
                 mlp.append(act_fn())
                 mlp.append(dropout)
         if last_act_fn is not None:

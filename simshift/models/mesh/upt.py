@@ -472,6 +472,7 @@ class UPT(nn.Module):
         supernodes_max_neighbours: int = 32,
         out_deformation: bool = False,
         n_materials: int = 1,
+        conditioning_bn: bool = False,
     ):
         super().__init__()
         self.num_supernodes = num_supernodes
@@ -483,6 +484,7 @@ class UPT(nn.Module):
                 act_fn=nn.SiLU,
                 last_act_fn=nn.SiLU,
                 dropout_prob=0.1,
+                batchnorm=conditioning_bn
             ),
         )
 

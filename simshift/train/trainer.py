@@ -153,7 +153,6 @@ class Trainer:
 
         return train_loss_dict
 
-    # TODO: DRY
     @torch.no_grad()
     def eval_epoch(self):
         self.da_algorithm.eval()

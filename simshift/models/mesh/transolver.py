@@ -108,7 +108,6 @@ class TransolverBlock(nn.Module):
             slice_base=slice_base,
         )
 
-        # TODO drop path like transformers?
         self.norm2 = norm_layer(dim)
         self.mlp = MLP([dim, int(dim * mlp_ratio), dim], act_fn=act_fn)
 
@@ -182,6 +181,7 @@ class Transolver(nn.Module):
         conditioning_mode: str = "dit",
         out_deformation: bool = True,
         n_materials: Optional[int] = None,
+        conditioning_bn: bool = False,
     ):
         super().__init__()
 
@@ -200,6 +200,7 @@ class Transolver(nn.Module):
                 act_fn=act_fn,
                 last_act_fn=act_fn,
                 dropout_prob=dropout_prob,
+                batchnorm=conditioning_bn,
             ),
         )
 
@@ -216,7 +217,6 @@ class Transolver(nn.Module):
         # processor ("physics attention")
         BlockType = TransolverBlock
         if conditioning_mode == "cat":
-            # TODO project down instead
             self.proj_cond = nn.Linear(
                 transolver_base + latent_channels, transolver_base, bias=False
             )
@@ -237,10 +237,6 @@ class Transolver(nn.Module):
             blocks.append(block)
         self.blocks = nn.ModuleList(blocks)
 
-        # TODO: why did we have this here???
-        # self.bias = nn.Parameter(
-        #     (1 / (transolver_base)) * torch.rand(transolver_base, dtype=torch.float)
-        # )
 
         # decode latent to fields (+ positions)
         self.decoder = MLP(

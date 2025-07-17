@@ -49,7 +49,7 @@ def run(cfg: DictConfig):
         else {},
     )
 
-    metrics = get_metrics(cfg)  # TODO: maybe put this before
+    metrics = get_metrics(cfg)
 
     trainer = Trainer(
         datasets=datasets,

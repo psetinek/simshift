@@ -197,7 +197,7 @@ def load_model(ckp_path, load_opt, valset=None, load_trainset=False):
 
     # model loading
     if valset is None:
-        valset = datasets[1]
+        valset = datasets[0]
     model = get_model(cfg, dataset=valset)
     model.load_state_dict(ckp["model_state_dict"])
     dict_out["model"] = model

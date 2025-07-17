@@ -3,3 +3,4 @@ hparams:
   latent_channels: 8
   dropout_prob: 0
   pointnet_base: 32
+  conditioning_bn: false
