@@ -109,7 +109,6 @@ if __name__ == "__main__":
                         "config.da_algorithm.da_loss_weight": {"$ne": 0},
                     }
                 )
-                # TODO: quick fix for transolver models
                 if model_type_name == "Transolver":
                     filters["config.model.hparams.transolver_base"] = 128
                 runs = api.runs(f"{ENTITY}/{PROJECT}", filters=filters)

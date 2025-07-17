@@ -8,3 +8,4 @@ hparams:
   num_layers: 4
   slice_base: 32
   conditioning_mode: dit
+  conditioning_bn: false

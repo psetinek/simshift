@@ -8,3 +8,4 @@ hparams:
   supernodes_radius: 0.05
   supernodes_max_neighbours: 32
   num_heads: 3
+  conditioning_bn: false
