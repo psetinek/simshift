@@ -9,3 +9,4 @@ hparams:
   slice_base: 32
   conditioning_mode: dit
   conditioning_bn: false
+  conditioning_ln: false

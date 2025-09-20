@@ -13,6 +13,18 @@ from simshift.model_selection.model_selector import ModelSelector
 from simshift.model_selection.utils import compute_rmse, get_predictions
 from simshift.utils import load_model, set_seed
 
+from simshift.model_selection.utils import (
+    rolling_evaluate_middle_line,
+    forming_evaluate_middle_line,
+    motor_evaluate_chord,
+    heatsink_evaluate_middle_line,
+)
+
+from simshift.data.rolling_data import RollingDataset
+from simshift.data.forming_data import FormingDataset
+from simshift.data.motor_data import MotorDataset
+from simshift.data.heatsink_data import HeatsinkDataset
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -85,6 +97,9 @@ if __name__ == "__main__":
     trainset_target = ckp_dict["trainset_target"]
     testset = get_test_data(ckp_dict["cfg"], trainset_source.normalization_stats)
     testset_source, testset_target = testset
+    if PROJECT == "heatsink":
+        testset_source.n_subsampled_nodes = None
+        testset_target.n_subsampled_nodes = None
 
     # get unqiue models, da_algorithms and seeds
     unique_models = sorted({run.config["model"]["name"] for run in all_runs})
@@ -109,8 +124,7 @@ if __name__ == "__main__":
                         "config.da_algorithm.da_loss_weight": {"$ne": 0},
                     }
                 )
-                if model_type_name == "Transolver":
-                    filters["config.model.hparams.transolver_base"] = 128
+
                 runs = api.runs(f"{ENTITY}/{PROJECT}", filters=filters)
                 try:
                     if len(runs) == 0:
@@ -152,6 +166,8 @@ if __name__ == "__main__":
                     rmse_target_per_field,
                     rmse_source_deformation,
                     rmse_target_deformation,
+                    custom_error_source,
+                    custom_error_target,
                 ) = model_selector.compute_test_performance()
 
                 # record results
@@ -179,6 +195,9 @@ if __name__ == "__main__":
                         result[f"test_loss_target_{field_name}"] = (
                             rmse_target_per_field[i, field_slice].mean().item()
                         )
+                    # add custom evaluation metrics
+                    result["test_loss_source_custom"] = custom_error_source[i].item()
+                    result["test_loss_target_custom"] = custom_error_target[i].item()
                     results.append(result)
 
         # for every model type, include results for an unregularized run
@@ -194,6 +213,7 @@ if __name__ == "__main__":
                     "config.da_algorithm.da_loss_weight": 0,
                 }
             )
+            runs = api.runs(f"{ENTITY}/{PROJECT}", filters=filters)
             try:
                 if len(runs) == 0:
                     continue
@@ -310,15 +330,35 @@ if __name__ == "__main__":
                 "cpu"
             )
 
+            source_loader = DataLoader(
+                testset_source,
+                batch_size=len(testset_source),
+                collate_fn=testset_source.collate,
+            )
+            target_loader = DataLoader(
+                testset_target,
+                batch_size=len(testset_target),
+                collate_fn=testset_target.collate,
+            )
+            source_sample = next(iter(source_loader))
+            source_sample = source_sample.to("cpu")
+            target_sample = next(iter(target_loader))
+            target_sample = target_sample.to("cpu")
             # 2) compute losses: denormalized RMSE for each field and denormalized
             # coordinates loss
             # denormalize predictions
             # ensemble_predictions: [n_algorithms, total_nodes, n_fields]
-            predictions_source_denormalized = testset_source.denormalize(
-                None, source_preds[..., : -source_sample.y_mesh_coords.shape[-1]]
+            cond_source_denormalized, predictions_source_denormalized = (
+                testset_source.denormalize(
+                    source_sample.cond,
+                    source_preds[..., : -source_sample.y_mesh_coords.shape[-1]],
+                )
             )  # slice to remove coordinates
-            predictions_target_denormalized = testset_target.denormalize(
-                None, target_preds[..., : -target_sample.y_mesh_coords.shape[-1]]
+            cond_target_denormalized, predictions_target_denormalized = (
+                testset_target.denormalize(
+                    target_sample.cond,
+                    target_preds[..., : -target_sample.y_mesh_coords.shape[-1]],
+                )
             )
 
             # denormalize ground truth
@@ -416,6 +456,100 @@ if __name__ == "__main__":
             )
             rmse_tgt_deformation = rmse_tgt_coords_per_graph.mean()
 
+            # Dataset specific evaluation loss
+            if isinstance(testset_source, RollingDataset):
+                custom_error_source = rolling_evaluate_middle_line(
+                    preds=predictions_source_denormalized.unsqueeze(0),
+                    gts=source_gt_denormalized.unsqueeze(0),
+                    coords=source_gt_coords_denormalized.unsqueeze(0),
+                    batch_indices=source_batch_index,
+                    x_rel_tol=0.001,
+                    channel=testset_source.channels["nodes_PEEQ"],
+                    eps=0.001,
+                )
+                custom_error_target = rolling_evaluate_middle_line(
+                    preds=predictions_target_denormalized.unsqueeze(0),
+                    gts=target_gt_denormalized.unsqueeze(0),
+                    coords=target_gt_coords_denormalized.unsqueeze(0),
+                    batch_indices=target_batch_index,
+                    x_rel_tol=0.001,
+                    channel=testset_target.channels["nodes_PEEQ"],
+                    eps=0.001,
+                )
+
+            elif isinstance(testset_source, FormingDataset):
+                custom_error_source = forming_evaluate_middle_line(
+                    preds=predictions_source_denormalized.unsqueeze(0),
+                    gts=source_gt_denormalized.unsqueeze(0),
+                    coords=source_gt_coords_denormalized.unsqueeze(0),
+                    conds=cond_source_denormalized,
+                    batch_indices=source_batch_index,
+                    x_rel_tol=0.01,
+                    dataset=testset_source,
+                    eps=1,
+                )
+                custom_error_target = forming_evaluate_middle_line(
+                    preds=predictions_target_denormalized.unsqueeze(0),
+                    gts=target_gt_denormalized.unsqueeze(0),
+                    coords=target_gt_coords_denormalized.unsqueeze(0),
+                    conds=cond_target_denormalized,
+                    batch_indices=target_batch_index,
+                    x_rel_tol=0.01,
+                    dataset=testset_target,
+                    eps=1,
+                )
+
+            elif isinstance(testset_source, MotorDataset):
+                custom_error_source = motor_evaluate_chord(
+                    preds=predictions_source_denormalized.unsqueeze(0),
+                    gts=source_gt_denormalized.unsqueeze(0),
+                    coords=source_gt_coords_denormalized.unsqueeze(0),
+                    conds=cond_source_denormalized,
+                    batch_indices=source_batch_index,
+                    x_rel_tol=0.05,
+                    channel=testset_source.channels["stress_mises"],
+                    dataset=testset_source,
+                    eps=1,
+                )
+                custom_error_target = motor_evaluate_chord(
+                    preds=predictions_target_denormalized.unsqueeze(0),
+                    gts=target_gt_denormalized.unsqueeze(0),
+                    coords=target_gt_coords_denormalized.unsqueeze(0),
+                    conds=cond_target_denormalized,
+                    batch_indices=target_batch_index,
+                    x_rel_tol=0.05,
+                    channel=testset_source.channels["stress_mises"],
+                    dataset=testset_target,
+                    eps=1,
+                )
+
+            elif isinstance(testset_source, HeatsinkDataset):
+                custom_error_source = heatsink_evaluate_middle_line(
+                    preds=predictions_source_denormalized.unsqueeze(0),
+                    gts=source_gt_denormalized.unsqueeze(0),
+                    coords=source_gt_coords_denormalized.unsqueeze(0),
+                    batch_indices=source_batch_index,
+                    x_rel_tol=0.05,
+                    z_rel_tol=0.05,
+                    z_fixed=0.025,
+                    channel=testset_source.channels["T"],
+                    eps=1e-2,
+                )
+                custom_error_target = heatsink_evaluate_middle_line(
+                    preds=predictions_target_denormalized.unsqueeze(0),
+                    gts=target_gt_denormalized.unsqueeze(0),
+                    coords=target_gt_coords_denormalized.unsqueeze(0),
+                    batch_indices=target_batch_index,
+                    x_rel_tol=0.05,
+                    z_rel_tol=0.05,
+                    z_fixed=0.025,
+                    channel=testset_target.channels["T"],
+                    eps=1e-2,
+                )
+
+            else:
+                raise ValueError("Wrong dataset?!")
+
             # record result
             result = {
                 "model_name": model_type_name,
@@ -436,6 +570,9 @@ if __name__ == "__main__":
                 result[f"test_loss_target_{field_name}"] = (
                     rmse_tgt_fields[field_slice].mean().item()
                 )
+            # add custom losses
+            result["test_loss_source_custom"] = custom_error_source[0].item()
+            result["test_loss_target_custom"] = custom_error_target[0].item()
             results.append(result)
             # clear gpu memory
             torch.cuda.empty_cache()

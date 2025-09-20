@@ -10,7 +10,16 @@ from simshift.model_selection.utils import (
     get_mse_loss,
     get_predictions,
     train_domain_classifier,
+    rolling_evaluate_middle_line,
+    forming_evaluate_middle_line,
+    motor_evaluate_chord,
+    heatsink_evaluate_middle_line
 )
+
+from simshift.data.rolling_data import RollingDataset
+from simshift.data.forming_data import FormingDataset
+from simshift.data.motor_data import MotorDataset
+from simshift.data.heatsink_data import HeatsinkDataset
 
 
 class ModelSelector:
@@ -121,10 +130,10 @@ class ModelSelector:
             valset_source_latents,
             trainset_target_latents,
         ) = get_latents(
-            model.conditioning,
-            self.trainset_source,
-            self.valset_source,
-            self.trainset_target,
+            model,
+            self.trainloader_source,
+            self.valloader_source,
+            self.trainloader_target,
             device=self.device,
         )
 
@@ -341,12 +350,12 @@ class ModelSelector:
         # coordinates loss
         # denormalize predictions
         # ensemble_predictions: [n_algorithms, total_nodes, n_fields]
-        ensemble_predictions_source_denormalized = self.testset_source.denormalize(
-            None,
+        cond_source_denormalized, ensemble_predictions_source_denormalized = self.testset_source.denormalize(
+            source_sample.cond,
             ensemble_predictions_source[..., : -source_sample.y_mesh_coords.shape[-1]],
         )  # slice to remove coordinates
-        ensemble_predictions_target_denormalized = self.testset_target.denormalize(
-            None,
+        cond_target_denormalized, ensemble_predictions_target_denormalized = self.testset_target.denormalize(
+            source_sample.cond,
             ensemble_predictions_target[..., : -target_sample.y_mesh_coords.shape[-1]],
         )
 
@@ -445,6 +454,100 @@ class ModelSelector:
         )
         rmse_tgt_deformation = rmse_tgt_coords_per_graph.mean(1)
 
+        # Dataset specific evaluation loss
+        if isinstance(self.testset_source, RollingDataset):
+            custom_error_source = rolling_evaluate_middle_line(
+                preds=ensemble_predictions_source_denormalized,
+                gts=source_gt_denormalized,
+                coords=source_gt_coords_denormalized,
+                batch_indices=source_batch_index,
+                x_rel_tol=0.001,
+                channel=self.testset_source.channels["nodes_PEEQ"],
+                eps=0.001,
+            )
+            custom_error_target = rolling_evaluate_middle_line(
+                preds=ensemble_predictions_target_denormalized,
+                gts=target_gt_denormalized,
+                coords=target_gt_coords_denormalized,
+                batch_indices=target_batch_index,
+                x_rel_tol=0.001,
+                channel=self.testset_target.channels["nodes_PEEQ"],
+                eps=0.001,
+            )
+
+        elif isinstance(self.testset_source, FormingDataset):
+            custom_error_source = forming_evaluate_middle_line(
+                preds=ensemble_predictions_source_denormalized,
+                gts=source_gt_denormalized,
+                coords=source_gt_coords_denormalized,
+                conds=cond_source_denormalized,
+                batch_indices=source_batch_index,
+                x_rel_tol=0.01,
+                dataset=self.testset_source,
+                eps=1,
+            )
+            custom_error_target = forming_evaluate_middle_line(
+                preds=ensemble_predictions_target_denormalized,
+                gts=target_gt_denormalized,
+                coords=target_gt_coords_denormalized,
+                conds=cond_target_denormalized,
+                batch_indices=target_batch_index,
+                x_rel_tol=0.01,
+                dataset=self.testset_target,
+                eps=1,
+            )
+
+        elif isinstance(self.testset_source, MotorDataset):
+            custom_error_source = motor_evaluate_chord(
+                preds=ensemble_predictions_source_denormalized,
+                gts=source_gt_denormalized,
+                coords=source_gt_coords_denormalized,
+                conds=cond_source_denormalized,
+                batch_indices=source_batch_index,
+                x_rel_tol=0.05,
+                channel=self.testset_source.channels["stress_mises"],
+                dataset=self.testset_source,
+                eps=1,
+            )
+            custom_error_target = motor_evaluate_chord(
+                preds=ensemble_predictions_target_denormalized,
+                gts=target_gt_denormalized,
+                coords=target_gt_coords_denormalized,
+                conds=cond_target_denormalized,
+                batch_indices=target_batch_index,
+                x_rel_tol=0.05,
+                channel=self.testset_source.channels["stress_mises"],
+                dataset=self.testset_target,
+                eps=1,
+            )
+
+        elif isinstance(self.testset_source, HeatsinkDataset):
+            custom_error_source = heatsink_evaluate_middle_line(
+                preds=ensemble_predictions_source_denormalized,
+                gts=source_gt_denormalized,
+                coords=source_gt_coords_denormalized,
+                batch_indices=source_batch_index,
+                x_rel_tol=0.05,
+                z_rel_tol=0.05,
+                z_fixed=0.025,
+                channel=self.testset_source.channels["T"],
+                eps=1e-2
+            )
+            custom_error_target = heatsink_evaluate_middle_line(
+                preds=ensemble_predictions_target_denormalized,
+                gts=target_gt_denormalized,
+                coords=target_gt_coords_denormalized,
+                batch_indices=target_batch_index,
+                x_rel_tol=0.05,
+                z_rel_tol=0.05,
+                z_fixed=0.025,
+                channel=self.testset_target.channels["T"],
+                eps=1e-2
+            )
+        else:
+            raise ValueError("Wrong dataset?!")
+
+
         return (
             source_loss_per_algorithm,
             target_loss_per_algorithm,
@@ -452,4 +555,6 @@ class ModelSelector:
             rmse_tgt_per_field,
             rmse_src_deformation,
             rmse_tgt_deformation,
+            custom_error_source,
+            custom_error_target
         )

@@ -22,54 +22,28 @@ class LogisticRegressionModel(nn.Module):
         return self.layers(x)
 
 
+@torch.no_grad()
 def get_latents(
-    latent_extractor: nn.Module,
-    trainset_source: Dataset,
-    valset_source: Dataset,
-    trainset_target: Dataset,
+    model: nn.Module,
+    trainloader_source: Dataset,
+    valloader_source: Dataset,
+    trainloader_target: Dataset,
     device: Optional[str] = "cpu",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Compute latents for the conditioning inputs of the given datasets given a feature
-    extractor.
 
-    Args:
-        latent_extractor (torch.nn.Module) : Neural network that maps conditioning
-                                             inputs to latent vectors.
-        trainset_source (torch.utils.data.Dataset): Training dataset for the source
-                                                    domain.
-        valset_source (torch.utils.data.Dataset): Validation dataset for the source
-                                                  domain.
-        trainset_target (torch.utils.data.Dataset): Training dataset for the target
-                                                    domain.
-        device (str, optional): Torch device name for computing the latents.
+    def predict(model, dataloader):
+        model.to(device)
+        model.eval()
+        latents = []
+        for sample in dataloader:
+            sample = sample.to(device)
+            _, latent = model(**sample.as_dict())
+            latents.append(latent)
+        return torch.concat(latents, dim=0)
 
-    Returns:
-        tuple[Tensor, Tensor, Tensor]:
-            A 3-tuple containing:
-            1. `trainset_source_latents` of shape `(N_src_train, latent_dim)`
-            2. `valset_source_latents`   of shape `(N_src_val,   latent_dim)`
-            3. `trainset_target_latents` of shape `(N_tgt_train, latent_dim)`
-    """
-    # assemble all datasets into one batch (since its only cond and not the actual
-    # fields, it is very small)
-    trainset_source_conds = [
-        trainset_source[i].cond for i in range(len(trainset_source))
-    ]
-    valset_source_conds = [valset_source[i].cond for i in range(len(valset_source))]
-    trainset_target_conds = [
-        trainset_target[i].cond for i in range(len(trainset_target))
-    ]
-    trainset_source_conds = torch.stack(trainset_source_conds).to(device)
-    valset_source_conds = torch.stack(valset_source_conds).to(device)
-    trainset_target_conds = torch.stack(trainset_target_conds).to(device)
-
-    # compute latents
-    latent_extractor = latent_extractor.to(device)
-    latent_extractor.eval()
-    with torch.no_grad():
-        trainset_source_latents = latent_extractor(trainset_source_conds)
-        valset_source_latents = latent_extractor(valset_source_conds)
-        trainset_target_latents = latent_extractor(trainset_target_conds)
+    trainset_source_latents = predict(model, trainloader_source)
+    valset_source_latents = predict(model, valloader_source)
+    trainset_target_latents = predict(model, trainloader_target)
 
     return trainset_source_latents, valset_source_latents, trainset_target_latents
 
@@ -297,3 +271,160 @@ def train_domain_classifier(
             best_model = model
 
     return best_model
+
+
+def rolling_evaluate_middle_line(preds, gts, coords, batch_indices, x_rel_tol, channel, eps=0.001):
+    errors = []
+    for i in range(batch_indices.max().item() + 1):
+        sample_mask = batch_indices == i
+        pred = preds[:, sample_mask, :][:, :, channel]
+        gt = gts[:, sample_mask, :][:, :, channel]
+        coord = coords[:, sample_mask, :]
+
+        # get center line
+        x = coord[0, :, 0]
+        # y = coord[0, :, 1]
+        x_min, x_max = x.min(), x.max()
+        x_center = 0.5 * (x_min + x_max)
+
+        # points mask
+        x_tol = (x_max - x_min) * x_rel_tol
+        mask = (x - x_center).abs() < x_tol
+
+        # y_line = y[mask]
+        f_pred = pred[:, mask, :]
+        f_gt = gt[:, mask, :]
+        # y_sorted, indices = torch.sort(y_line)
+        # f_pred_sorted = f_pred_line[indices]
+        # f_gt_sorted = f_gt_line[indices]
+
+        # compute average error
+        avg_ae = torch.abs((f_pred - f_gt)/(f_gt + eps)).mean(dim=(1,2))
+        errors.append(avg_ae)
+
+    return torch.stack(errors).mean(dim=0)
+
+
+def forming_evaluate_middle_line(preds, gts, coords, conds, batch_indices, x_rel_tol, dataset, eps=1):
+    errors = []
+    for i in range(batch_indices.max().item() + 1):
+        sample_mask = batch_indices == i
+        pred = preds[:, sample_mask, :][:, :, dataset.channels["nodes_stresses"]][:, :, 0].unsqueeze(-1)
+        gt = gts[:, sample_mask, :][:, :, dataset.channels["nodes_stresses"]][:, :, 0].unsqueeze(-1)
+        coord = coords[:, sample_mask, :]
+        cond = conds[i]
+
+        # l/2 coordinate
+        x = coord[0, :, 0]
+        # y = coord[:, 1]
+        l_half = cond[dataset.conds["l"]] / 2
+        x_tol = l_half * x_rel_tol
+        mask = (x - l_half).abs() < x_tol
+
+        # y_line = y[mask]
+        f_pred= pred[:, mask, :]
+        f_gt = gt[:, mask, :]
+        # y_sorted, indices = torch.sort(y_line)
+        # f_pred_sorted = f_pred_line[indices]
+        # f_gt_sorted = f_gt_line[indices]
+
+        # compute average error
+        avg_ae = torch.abs((f_pred - f_gt)/(f_gt + eps)).mean(dim=(1,2))
+        errors.append(avg_ae)
+
+    return torch.stack(errors).mean(dim=0)
+
+
+def motor_evaluate_chord(preds, gts, coords, conds, batch_indices, x_rel_tol, channel, dataset, eps=1):
+    errors = []
+    for i in range(batch_indices.max().item() + 1):
+        sample_mask = batch_indices == i
+        pred = preds[:, sample_mask, :][:, :, channel]
+        gt = gts[:, sample_mask, :][:, :, channel]
+        coord = coords[:, sample_mask, :]
+        cond = conds[i]
+
+        x = coord[0, :, 0]
+        y = coord[0, :, 1]
+
+        # find top right point
+        y_tol = 1e-1 * y.max()  # adjustable tolerance
+        top_mask = (coord[0, :, 1] >= y.max() - y_tol)
+
+        # Among those, find the one with largest x
+        x_top = coord[0, top_mask, 0]
+        idx_top_right = torch.argmax(x_top)
+        top_right_point = coord[:, top_mask, :][:, idx_top_right, :]
+
+        # shift to the left
+        trsb1 = cond[dataset.conds["Geometry.Rotor.trsb1"]]
+        rr2 = cond[dataset.conds["Geometry.Rotor.rr2"]]
+        shift = (trsb1 / 2 + 1.1 * rr2) * 1e-3
+        x_cord = top_right_point[:, 0] - shift
+        mask = (x - x_cord).abs() < shift * x_rel_tol
+        # mask = (x - x_cord).abs() < 1e-4
+
+
+        y_line = y[mask]
+        f_pred_line = pred[:, mask, :]
+        f_gt_line = gt[:, mask, :]
+        y_sorted, indices = torch.sort(y_line)
+        f_pred_sorted = f_pred_line[:, indices, :]
+        f_gt_sorted = f_gt_line[:, indices, :]
+
+        # start from right, stop at first decrease
+        cut_idx = len(f_gt_sorted)  # default: keep all
+        for idx in range(len(f_gt_sorted[0, : ,0]) - 1, 0, -1):
+            if f_gt_sorted[0, idx - 1, 0] < .7 * f_gt_sorted[0, idx, 0] or y_sorted[idx] < 0.04:
+                cut_idx = idx
+                break
+
+        # Trim the arrays
+        y_sorted = y_sorted[cut_idx:]
+        f_pred_sorted = f_pred_sorted[:, cut_idx:, :]
+        f_gt_sorted = f_gt_sorted[:, cut_idx:, :]
+
+        avg_ae = torch.abs((f_pred_sorted - f_gt_sorted)/(f_gt_sorted + eps)).mean(dim=(1,2))
+        errors.append(avg_ae)
+
+    return torch.stack(errors).mean(dim=0)
+
+
+def heatsink_evaluate_middle_line(
+    preds, gts, coords, batch_indices,
+    x_rel_tol, z_rel_tol, z_fixed,
+    channel, eps=1
+):
+    errors = []
+
+    for i in range(batch_indices.max().item() + 1):
+        sample_mask = batch_indices == i
+        pred = preds[:, sample_mask, :][:, :, channel]
+        gt = gts[:, sample_mask, :][:, :, channel]
+        coord = coords[:, sample_mask, :]
+
+        x = coord[0, :, 0]
+        y = coord[0, :, 1]
+        z = coord[0, :, 2]
+
+        # Get center x value
+        x_min, x_max = x.min(), x.max()
+        x_center = 0.5 * (x_min + x_max)
+        x_tol = (x_max - x_min) * x_rel_tol
+        z_tol = (z.max() - z.min()) * z_rel_tol
+
+        # Mask for middle line: x ~ center and z ~ fixed
+        mask = ((x - x_center).abs() < x_tol) & ((z - z_fixed).abs() < z_tol)
+
+        if mask.sum() == 0:
+            print(f"Warning: no points for sample {i} on center line at z={z_fixed}")
+            continue
+
+        f_pred = pred[:, mask, :]
+        f_gt = gt[:, mask, :]
+
+        # Compute average error
+        avg_ae = torch.abs((f_pred - f_gt) / (f_gt + eps)).mean(dim=(1, 2))
+        errors.append(avg_ae)
+
+    return torch.stack(errors).mean(dim=0)

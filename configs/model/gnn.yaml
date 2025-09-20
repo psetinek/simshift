@@ -6,3 +6,4 @@ hparams:
   dropout_prob: 0
   conditioning_mode: film
   conditioning_bn: false
+  conditioning_ln: false

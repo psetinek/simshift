@@ -1,7 +1,6 @@
-name: PointNet
+name: PointNetGeometry
 hparams:
   latent_channels: 8
   dropout_prob: 0
   pointnet_base: 16
   conditioning_bn: false
-  conditioning_ln: false

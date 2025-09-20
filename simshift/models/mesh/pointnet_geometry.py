@@ -16,7 +16,7 @@ from simshift.models.utils import MLP
 
 
 @register_model()
-class PointNet(nn.Module):
+class PointNetGeometry(nn.Module):
     """
     Conditional PointNet architecture.
 
@@ -44,24 +44,12 @@ class PointNet(nn.Module):
         out_deformation: bool = True,
         n_materials: Optional[int] = None,
         conditioning_bn: bool = False,
-        conditioning_ln: bool = False,
     ):
         super().__init__()
 
         self.space = space
         self.output_channels = output_channels
         self.out_deformation = out_deformation
-
-        self.conditioning = nn.Sequential(
-            ContinuousSincosEmbed(dim=256, ndim=n_conds),
-            MLP(
-                [256, 256 // 2, 256 // 4, latent_channels],
-                act_fn=act_fn,
-                dropout_prob=dropout_prob,
-                batchnorm=conditioning_bn,
-                layernorm=conditioning_ln,
-            ),
-        )
 
         # encode positions to latent
         self.coord_embed = ContinuousSincosEmbed(dim=latent_channels, ndim=space)
@@ -81,19 +69,46 @@ class PointNet(nn.Module):
             act_fn=act_fn,
             dropout_prob=dropout_prob,
         )
+
+        # max block with da on gloal feature (geometry compression)
         self.max_block = MLP(
             [
                 pointnet_base * 2,
                 pointnet_base * 4,
                 pointnet_base * 8,
-                pointnet_base * 32,
+                pointnet_base * 16,
             ],
             act_fn=act_fn,
             dropout_prob=dropout_prob,
         )
+        self.pre_da = MLP(
+            [
+                pointnet_base * 16,
+                pointnet_base * 8,
+                pointnet_base * 4,
+                pointnet_base * 2,
+                pointnet_base,
+                latent_channels,
+            ],
+            act_fn=act_fn,
+            dropout_prob=dropout_prob,
+        )
+        self.post_da = MLP(
+            [
+                latent_channels,
+                pointnet_base,
+                pointnet_base * 2,
+                pointnet_base * 4,
+                pointnet_base * 8,
+                pointnet_base * 16,
+            ],
+            act_fn=act_fn,
+            dropout_prob=dropout_prob,
+        )
+
         self.out_block = MLP(
             [
-                pointnet_base * (32 + 2) + latent_channels,  # (globals + locals + cond)
+                pointnet_base * (16 + 2),  # (globals + locals)
                 pointnet_base * 16,
                 pointnet_base * 8,
                 pointnet_base * 4,
@@ -118,7 +133,7 @@ class PointNet(nn.Module):
         batch_index: Optional[torch.Tensor] = None,
     ):
         _ = mesh_edges
-        latent_vector = self.conditioning(cond)
+        _ = cond
         # encoder
         coords = mesh_coords.clone()
         x = self.encoder(self.coord_embed(mesh_coords))  # (BxN, C)
@@ -130,11 +145,12 @@ class PointNet(nn.Module):
 
         x = self.in_block(x)
 
+        # latent_vector = self.max_block_pre_da(x)
         x_m = self.max_block(x)
         bs = batch_index.max() + 1
         global_x = torch.zeros((bs, x_m.shape[-1]), device=x.device, dtype=x.dtype)
         global_x.scatter_reduce_(
-            0, batch_index.unsqueeze(1).repeat(1, x_m.shape[-1]), x_m, reduce="amax"
+            0, batch_index.unsqueeze(1).repeat(1, x_m.shape[-1]), x_m, reduce="sum"
         )  # (B, C)
         # count points per mesh
         points = torch.zeros(bs, device=x.device, dtype=x.dtype)
@@ -142,7 +158,9 @@ class PointNet(nn.Module):
         points.scatter_reduce_(0, batch_index, ones, reduce="sum")
         points = points.long()
         # concatenate conditioning to globals
-        global_x = torch.cat([global_x, latent_vector], dim=-1)  # (B, gC+C)
+        latent_vector = self.pre_da(global_x)
+        global_x = self.post_da(latent_vector)
+        # global_x = torch.cat([global_x, latent_vector], dim=-1)  # (B, gC+C)
         global_x = torch.repeat_interleave(global_x, points, dim=0)
         x = torch.cat([x, global_x], dim=1)  # (BxN, lC+gC+C)
         x = self.out_block(x)  # (BxN, C)
