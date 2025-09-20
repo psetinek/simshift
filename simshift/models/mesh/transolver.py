@@ -76,7 +76,10 @@ class TransolverAttention(nn.Module):
         # global (across slices) attention
         qkv = rearrange(self.qkv(slice_att), "b h g (thr c) -> thr b h g c", thr=3)
         q, k, v = qkv[0], qkv[1], qkv[2]
-        att = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_dropout_prob)
+        if self.training:
+            att = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_dropout_prob)
+        else:
+            att = F.scaled_dot_product_attention(q, k, v, dropout_p=0)
         # merge (cross attention)
         x = einsum(att, slice_weights, "b h g c, b h n g -> b h n c")
         x = rearrange(x, "b h n d -> b n (h d)")
@@ -182,6 +185,7 @@ class Transolver(nn.Module):
         out_deformation: bool = True,
         n_materials: Optional[int] = None,
         conditioning_bn: bool = False,
+        conditioning_ln: bool = False,
     ):
         super().__init__()
 
@@ -198,9 +202,9 @@ class Transolver(nn.Module):
             MLP(
                 [256, 256 // 2, 256 // 4, latent_channels],
                 act_fn=act_fn,
-                last_act_fn=act_fn,
                 dropout_prob=dropout_prob,
                 batchnorm=conditioning_bn,
+                layernorm=conditioning_ln,
             ),
         )
 

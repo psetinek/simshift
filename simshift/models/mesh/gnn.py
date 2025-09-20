@@ -69,6 +69,7 @@ class GraphSAGE(nn.Module):
         out_deformation: bool = True,
         n_materials: Optional[int] = None,
         conditioning_bn: bool = False,
+        conditioning_ln: bool = False,
     ):
         super().__init__()
 
@@ -87,6 +88,7 @@ class GraphSAGE(nn.Module):
                 last_act_fn=act_fn,
                 dropout_prob=dropout_prob,
                 batchnorm=conditioning_bn,
+                layernorm=conditioning_ln,
             ),
         )
 

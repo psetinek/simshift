@@ -166,8 +166,11 @@ dev = [
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["simshift"]
+[tool.setuptools.packages.find]
+# automatically find all Python packages
+# in the current directory and its subdirectories.
+where = ["."]
+include = ["simshift*"]
 
 [tool.ruff]
 line-length = 88
