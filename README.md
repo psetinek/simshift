@@ -83,6 +83,41 @@ To get familiar with the capabilities of this repository, we provide a [`tutoria
 
 Please also take a look at the [documentation](https://simshift.readthedocs.io/en/latest/) of the package.
 
-#### 3. Paper results reproduciblility
+#### 3. Custom domain splits
+In the paper, we report results on 1D/2D splits, but you can define **arbitrary n-D splits** on the respective parameters of the SIMSHIFT datasets. We provide ```domain_splitter.py```, which filters source samples by ranges on any subset of parameters, and puts everything else into target. Both domains are then split into train/(val)/test as requested. To run the script, please provide the following arguments:
+```bash
+python domain_splitter.py --help
+usage: domain_splitter.py [-h] --data-path DATA_PATH [--src-filters SRC_FILTERS] [--src-ratios TRAIN VAL TEST] [--tgt-ratios TRAIN TEST] [--seed SEED] --output-dir OUTPUT_DIR
+
+Split HDF5 dataset into source/target domains and splits.
+
+options:
+  -h, --help            show this help message and exit
+  --data-path DATA_PATH
+                        Path to the .h5 dataset file.
+  --src-filters SRC_FILTERS
+                        JSON dict mapping condition -> [min,max], e.g. "{'thickness':[50,150], 'temp_core':[900,1100]}"
+  --src-ratios TRAIN VAL TEST
+                        Source domain ratios (must sum to 1). Default: 0.5 0.25 0.25
+  --tgt-ratios TRAIN TEST
+                        Target domain ratios (must sum to 1). Default: 0.5 0.5
+  --seed SEED           Random seed.
+  --output-dir OUTPUT_DIR
+                        Directory to write splits.json.
+```
+
+The following would be and example call to do a 3D split of the rolling dataset on reduction, thickness, and temp_core:
+```bash
+python domain_splitter.py --data-path "<path_to_rolling_h5>" --src-ratios 0.5 0.25 0.25 --tgt-ratios 0.5 0.5 --seed 42 --output-dir "." --src-filters '{"reduction":[0,0.13], "thickness":[0, 160], "temp_core":[0,1060]}'
+
+Saved splits to: ./splits.json
+
+Counts:
+  Source: {'train': 1280, 'val': 640, 'test': 640}
+  Target: {'train': 1095, 'val': 0, 'test': 1095}
+```
+Just place the generated json file into the respective dataset folder and train on your custom splits!
+
+#### 4. Paper results reproduciblility
 
 In order to provide maximum transparency, we provide clear instructions on how we obtained the papers results [here](./results/README.md).

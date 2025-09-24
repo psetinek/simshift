@@ -124,27 +124,17 @@ class BaseDataset(Dataset):
         with h5py.File(self.path, "r", swmr=True) as h5f:
             channels = {k: v[:] for k, v in h5f["metadata/channels"].items()}
             conds = {k: v[:] for k, v in h5f["metadata/cond"].items()}
+            has_material = "material" in list(h5f["data"]["0000"].keys())
             for i, data_index in tqdm(
                 enumerate(data_indices),
                 desc=f"Loading data (split={split}, domain={domain})",
                 total=len(data_indices),
             ):
-                keys = list(h5f["data"][f"domain{data_index[0]}"].keys())
                 sample_args = {
-                    "cond": h5f["data"][f"domain{data_index[0]}"][
-                        f"cond_{str(data_index[1]).zfill(3)}"
-                    ][:],
-                    "mesh_coords": h5f["data"][f"domain{data_index[0]}"][
-                        f"coords_{str(data_index[1]).zfill(3)}"
-                    ][:],
-                    "mesh_fields": h5f["data"][f"domain{data_index[0]}"][
-                        f"{str(data_index[1]).zfill(3)}"
-                    ][:],
-                    "mesh_material": h5f["data"][f"domain{data_index[0]}"][
-                        f"material_{str(data_index[1]).zfill(3)}"
-                    ][:]
-                    if keys[-1].startswith("material")
-                    else None,
+                    "cond": h5f["data"][str(data_index).zfill(4)]["cond"][:],
+                    "mesh_coords": h5f["data"][str(data_index).zfill(4)]["coords"][:],
+                    "mesh_fields": h5f["data"][str(data_index).zfill(4)]["fields"][:],
+                    "mesh_material": None if not has_material else h5f["data"][str(data_index).zfill(4)]["material"][:]
                 }
                 sample_results = self._load_sample(**sample_args)
                 sample = {}
@@ -305,10 +295,10 @@ class BaseDataset(Dataset):
         return cond
 
     def denormalize(self, conditionings, fields):
-        cond_stds = self.normalization_stats["cond_stds"]
-        cond_means = self.normalization_stats["cond_means"]
-        fields_stds = self.normalization_stats["std"].unsqueeze(0)
-        fields_means = self.normalization_stats["mean"].unsqueeze(0)
+        cond_stds = self.normalization_stats["cond_stds"].to(fields.device)
+        cond_means = self.normalization_stats["cond_means"].to(fields.device)
+        fields_stds = self.normalization_stats["std"].unsqueeze(0).to(fields.device)
+        fields_means = self.normalization_stats["mean"].unsqueeze(0).to(fields.device)
         if conditionings is not None:
             return (
                 conditionings * cond_stds + cond_means,
@@ -318,7 +308,7 @@ class BaseDataset(Dataset):
             return fields * fields_stds + fields_means
 
     def denormalize_coords(self, coords):
-        return coords * self.normalization_stats["mesh_maxs"]
+        return coords * self.normalization_stats["mesh_maxs"].to(coords.device)
 
     def collate(self, batch: Sequence[BaseSample]):
         n_nodes = [sample.mesh_coords.shape[0] for sample in batch]
