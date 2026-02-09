@@ -71,6 +71,11 @@ Then install the packages above as described in the respective [documentations](
 pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
 ```
 
+Then install torch-cluster with:
+```bash
+pip install torch-cluster -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
+```
+
 Finally, install the `simshift` package, via:
 
 ```
@@ -82,42 +87,57 @@ pip install -e .
 To get familiar with the capabilities of this repository, we provide a [`tutorial notebook`](./notebooks/tutorial.ipynb) showing easy model training and result evaluation and visualization. [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/psetinek/simshift/blob/main/notebooks/tutorial.ipynb)
 
 Please also take a look at the [documentation](https://simshift.readthedocs.io/en/latest/) of the package.
+There, we also provide instructions of how you can easily extend SIMSHIFTs current functionalities, i.e. add a new model, dataset or domain adaptation algorithm.
 
 #### 3. Custom domain splits
-In the paper, we report results on 1D/2D splits, but you can define **arbitrary n-D splits** on the respective parameters of the SIMSHIFT datasets. We provide ```domain_splitter.py```, which filters source samples by ranges on any subset of parameters, and puts everything else into target. Both domains are then split into train/(val)/test as requested. To run the script, please provide the following arguments:
+In the paper, we report results on 1D/2D splits, but you can define **arbitrary n-D splits** on the respective parameters of the SIMSHIFT datasets. We provide ```domain_splitter.py```, which filters source samples by ranges on any subset of parameters, and puts everything else into target. Both domains are then split into train/(val)/test as requested.
+
+You can use it as follows:
 ```bash
-python domain_splitter.py --help
-usage: domain_splitter.py [-h] --data-path DATA_PATH [--src-filters SRC_FILTERS] [--src-ratios TRAIN VAL TEST] [--tgt-ratios TRAIN TEST] [--seed SEED] --output-dir OUTPUT_DIR
-
-Split HDF5 dataset into source/target domains and splits.
-
-options:
-  -h, --help            show this help message and exit
-  --data-path DATA_PATH
-                        Path to the .h5 dataset file.
-  --src-filters SRC_FILTERS
-                        JSON dict mapping condition -> [min,max], e.g. "{'thickness':[50,150], 'temp_core':[900,1100]}"
-  --src-ratios TRAIN VAL TEST
-                        Source domain ratios (must sum to 1). Default: 0.5 0.25 0.25
-  --tgt-ratios TRAIN TEST
-                        Target domain ratios (must sum to 1). Default: 0.5 0.5
-  --seed SEED           Random seed.
-  --output-dir OUTPUT_DIR
-                        Directory to write splits.json.
+python domain_splitter.py \
+    --data-path <path_to_dataset> \
+    --config-file domain_splitting_configs/motor.json \
+    --output-name splits.json
 ```
 
-The following would be and example call to do a 3D split of the rolling dataset on reduction, thickness, and temp_core:
-```bash
-python domain_splitter.py --data-path "<path_to_rolling_h5>" --src-ratios 0.5 0.25 0.25 --tgt-ratios 0.5 0.5 --seed 42 --output-dir "." --src-filters '{"reduction":[0,0.13], "thickness":[0, 160], "temp_core":[0,1060]}'
+The arguments are:
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--data-path` | Yes | Path to the dataset directory (must contain `metadata.csv`) |
+| `--config-file` | Yes | JSON configuration file defining domain ranges and split ratios |
+| `--output-name` | No | Output filename (default: `splits.json`) |
 
-Saved splits to: ./splits.json
-
-Counts:
-  Source: {'train': 1280, 'val': 640, 'test': 640}
-  Target: {'train': 1095, 'val': 0, 'test': 1095}
+The splitting configs used for the results in the manuscript can be found [here](./domain_splitting_configs/). An example config could look like this:
+```json
+{
+    "seed": 42,
+    "source_ratios": [0.6, 0.2, 0.2],
+    "target_ratios": [0.6, 0.4],
+    "split_column": "Geometry.Rotor.dr3",
+    "source_range": [0, 119],
+    "target_ranges": {
+        "easy": [119, 121],
+        "medium": [121, 123],
+        "hard": [123, 126]
+    }
+}
 ```
-Just place the generated json file into the respective dataset folder and train on your custom splits!
+
+The required parameters are:
+| Parameter | Description |
+|-----------|-------------|
+| `seed` | Random seed for reproducibility |
+| `source_ratios` | `[train, val, test]` ratios for source domain (must sum to 1.0) |
+| `target_ratios` | `[train, test]` ratios for target domain (must sum to 1.0) |
+| `split_column` | Column name in `metadata.csv` to use for domain splitting |
+| `source_range` | `[min, max)` range for source domain samples |
+| `target_ranges` | Dict mapping difficulty names to `[min, max)` ranges |
+
+Additional requirements are:
+- The dataset directory must contain a `metadata.csv` file with:
+  - A `sample_id` column identifying each sample
+  - The conditioning column specified in `split_column`
 
 #### 4. Paper results reproduciblility
 
-In order to provide maximum transparency, we provide clear instructions on how we obtained the papers results [here](./results/README.md).
+We try to be as transparent as possible. Therefore, we provide clear instructions on how we obtained the papers results [here](./results/README.md).

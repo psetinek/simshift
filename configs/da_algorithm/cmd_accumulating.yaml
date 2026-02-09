@@ -1,0 +1,6 @@
+name: cmd_accumulating
+da_loss_weight: 0.1
+kwargs:
+  n_moments: 5
+  scaling_factor: 2
+  logical_batch_size: 16

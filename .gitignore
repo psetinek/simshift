@@ -6,13 +6,13 @@ wandb/
 *.out
 tmp/
 *.pkl
-multirun/
+*.csv
 *.pth
 scratch/
 datasets/
-internal/model_plots/
 *.egg-info*
 docs/_build
 .DS_Store*
 *.png
 build/
+_internal/

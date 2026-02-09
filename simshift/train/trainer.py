@@ -6,8 +6,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
-from torch import optim
 from torch.utils.data import DataLoader, Dataset
+
+from transformers import get_scheduler
 
 from simshift.eval import Metrics
 from simshift.utils import Logger, save_model_and_cfg
@@ -50,9 +51,12 @@ class Trainer:
         self.valloader_target = valloader_target
 
         self.da_algorithm = da_algorithm
-        if scheduler == "cosine":
-            self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                self.da_algorithm.opt, T_max=n_epochs
+        if scheduler is not None:
+            self.scheduler = get_scheduler(
+                name=cfg.training.scheduler,
+                optimizer=self.da_algorithm.opt,
+                num_training_steps=n_epochs,
+                num_warmup_steps=cfg.training.num_warmup_epochs,
             )
         else:
             self.scheduler = None
@@ -91,7 +95,22 @@ class Trainer:
 
                 # save model and log summary statistics
                 val_loss = val_loss_dict_log["val_source/mse_avg"]
+                # save model checkpoint and config (only if config is available,
+                # e.g. dont save in tutorial notebook)
+                if self.cfg:
+                    save_model_and_cfg(
+                        self.da_algorithm.ema_model
+                        if self.da_algorithm.use_ema
+                        else self.da_algorithm.model,
+                        optimizer=self.da_algorithm.opt,
+                        cfg=self.cfg,
+                        trainset=self.datasets[0],
+                        epoch=epoch,
+                        val_loss=val_loss,
+                        loss_val_min=val_loss_min,
+                    )
                 if val_loss < val_loss_min:
+                    val_loss_min = val_loss
                     early_stop_counter = 0
                     # logging summary stats
                     if self.logger.wandb_writer is not None:
@@ -102,21 +121,6 @@ class Trainer:
                             "model_saving/val_source/mse_max"
                         ] = val_loss_dict_log["val_source/mse_max"]
                         self.logger.wandb_writer.summary["model_saving/epoch"] = epoch
-                    # save model checkpoint and config (only if config is available,
-                    # e.g. dont save in tutorial notebook)
-                    if self.cfg:
-                        save_model_and_cfg(
-                            self.da_algorithm.ema_model
-                            if self.da_algorithm.use_ema
-                            else self.da_algorithm.model,
-                            optimizer=self.da_algorithm.opt,
-                            cfg=self.cfg,
-                            trainset=self.datasets[0],
-                            epoch=epoch,
-                            val_loss=val_loss,
-                            loss_val_min=val_loss_min,
-                        )
-                    val_loss_min = val_loss
                 else:
                     early_stop_counter += 10
                     if early_stop_counter >= self.early_stopping_patience:
@@ -143,6 +147,11 @@ class Trainer:
             sum_bs += bs
             for k, v in self.da_algorithm.loss_dict.items():
                 train_loss_dict[k] += v * bs
+
+        # for gradient accumulation with GINO
+        if hasattr(self.da_algorithm, 'flush_gradients'):
+            self.da_algorithm.flush_gradients()
+
         for k, val in train_loss_dict.items():
             train_loss_dict[k] = val / sum_bs
 
@@ -161,11 +170,9 @@ class Trainer:
             sample = sample.to(self.device)
             pred = self.da_algorithm.predict(sample)
             pred, coords = pred
-            self.metrics.update_domain_metrics(pred, sample.y, domain="source")
-        for sample in self.valloader_target:
-            sample = sample.to(self.device)
-            pred = self.da_algorithm.predict(sample)
-            pred, coords = pred
-            self.metrics.update_domain_metrics(pred, sample.y, domain="target")
+            batch_size = sample.cond.shape[0]  # actual number of samples, not nodes
+            self.metrics.update_domain_metrics(
+                pred, sample.y, domain="source", batch_size=batch_size
+            )
         epoch_stats = self.metrics.get_epoch_stats()
         return epoch_stats

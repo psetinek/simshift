@@ -24,5 +24,10 @@ DANN
 .. automodule:: simshift.da_algorithms.dann
     :members:
 
+DARE-GRAM
+---------
+.. automodule:: simshift.da_algorithms.dare_gram
+    :members:
+
 
 

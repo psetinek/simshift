@@ -122,7 +122,51 @@ def save_model_and_cfg(
         )
 
 
-def load_model(ckp_path, load_opt, valset=None, load_trainset=False):
+def _apply_cfg_changes(cfg, cfg_changes=None, *, allow_new_keys=True):
+    """
+    Supports:
+      - nested dicts: {"training": {"n_epochs": 100}}
+      - dot-keys:     {"training.n_epochs": 100, "logging.run_id": "foo"}
+      - dotlist:      ["training.n_epochs=100", "logging.run_id=foo"]
+    """
+    if not cfg_changes:
+        return cfg
+
+    # Ensure we can write new keys if desired
+    if allow_new_keys:
+        OmegaConf.set_struct(cfg, False)
+
+    # Case 1: list/tuple of dotlist strings
+    if isinstance(cfg_changes, (list, tuple)):
+        dot = OmegaConf.from_dotlist(list(cfg_changes))
+        cfg = OmegaConf.merge(cfg, dot)
+        return cfg
+
+    # Case 2: dict (may contain nested dicts and/or dotted keys)
+    if isinstance(cfg_changes, dict):
+        # Merge nested dicts in one shot
+        nested_part = {
+            k: v
+            for k, v in cfg_changes.items()
+            if isinstance(v, dict) and ("." not in k and "[" not in k)
+        }
+        if nested_part:
+            cfg = OmegaConf.merge(cfg, OmegaConf.create(nested_part))
+
+        # Apply dotted (path-like) keys individually
+        dotted_part = {
+            k: v
+            for k, v in cfg_changes.items()
+            if not isinstance(v, dict) or ("." in k or "[" in k)
+        }
+        for k, v in dotted_part.items():
+            OmegaConf.update(cfg, k, v, merge=True)
+        return cfg
+
+    raise TypeError("cfg_changes must be a dict, list/tuple (dotlist), or None")
+
+
+def load_model(ckp_path, load_opt, valset=None, load_trainset=False, cfg_changes=None):
     """Load a model and optionally related datasets, dataloaders, and optimizer state
     from a checkpoint.
 
@@ -148,8 +192,11 @@ def load_model(ckp_path, load_opt, valset=None, load_trainset=False):
               "valloader_target": Corresponding dataloaders (as available).
     """
     dict_out = {}
-    ckp = torch.load(ckp_path, weights_only=True)
+    ckp = torch.load(ckp_path, weights_only=False)
     cfg = OmegaConf.create(ckp["cfg"])
+    cfg = _apply_cfg_changes(cfg, cfg_changes, allow_new_keys=False)
+    if "_metadata" in ckp["model_state_dict"]:
+        ckp["model_state_dict"].pop("_metadata")
     dict_out["cfg"] = cfg
 
     if valset is None:

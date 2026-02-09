@@ -1,5 +1,7 @@
 name: motor
 path: datasets/motor  # if data is not available at the given path, it will be downloaded
+splits_path: null  # default splits path assumes a splits.json in the path folder above
+metadata_path: null  # default metadata path assumes a metadata.csv in the path folder above
 normalization: zscore
 difficulty: medium
 out_deformation: True

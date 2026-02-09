@@ -117,7 +117,7 @@ def main():
                     print(f"Started run {index} with PID {proc.pid}")
 
                 index += 1
-                time.sleep(10)
+                time.sleep(60)
 
             # Check completed processes
             new_processes = []

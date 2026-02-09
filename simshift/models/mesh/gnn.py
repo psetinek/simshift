@@ -24,6 +24,7 @@ class ModulatedSAGEConv(pygnn.SAGEConv):
     Args:
         cond_dim (int): Dimension of the conditioning vector.
     """
+
     def __init__(self, cond_dim: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -85,7 +86,6 @@ class GraphSAGE(nn.Module):
             MLP(
                 [256, 256 // 2, 256 // 4, latent_channels],
                 act_fn=act_fn,
-                last_act_fn=act_fn,
                 dropout_prob=dropout_prob,
                 batchnorm=conditioning_bn,
                 layernorm=conditioning_ln,

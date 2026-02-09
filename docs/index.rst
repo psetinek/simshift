@@ -33,22 +33,22 @@ SIMSHIFT includes four practical datasets, with predefined distribution shifts. 
 
 4. **Heatsink:** CFD simulation focused on the thermal performance of heat sinks, commonly used in electronic cooling applications.
 
-+-----------+--------------+---------+------------------+-----------------+--------------------------+------+-------+
-| Dataset   | Origin       | Samples | Output channels  | Avg. # nodes    | Varied simulation params | Dim  | (GB)  |
-+===========+==============+=========+==================+=================+==========================+======+=======+
-| Rolling   | Metallurgy   | 4,750   | 10               | 576             | 4                        | 2D   | 0.5   |
-+-----------+--------------+---------+------------------+-----------------+--------------------------+------+-------+
-| Forming   | Manufacturing| 3,315   | 10               | 6,417           | 4                        | 2D   | 4.1   |
-+-----------+--------------+---------+------------------+-----------------+--------------------------+------+-------+
-| Motor     | Machinery    | 3,196   | 26               | 9,052           | 15                       | 2D   | 13.4  |
-+-----------+--------------+---------+------------------+-----------------+--------------------------+------+-------+
-| Heatsink  | Electronics  | 460     | 5                | 1,385,594       | 4                        | 3D   | 40.8  |
-+-----------+--------------+---------+------------------+-----------------+--------------------------+------+-------+
++-----------+--------------+---------+-----------------+--------------------------+------+------------+
+| Dataset   | Origin       | Samples | Avg. # nodes    | Varied simulation params | Dim  | Size (GB)  |
++===========+==============+=========+=================+==========================+======+============+
+| Rolling   | Metallurgy   | 5000    | 508             | 4                        | 2D   | 3.1        |
++-----------+--------------+---------+-----------------+--------------------------+------+------------+
+| Forming   | Manufacturing| 4000    | 9,080           | 4                        | 2D   | 19         |
++-----------+--------------+---------+-----------------+--------------------------+------+------------+
+| Motor     | Machinery    | 3,195   | 4,846           | 15                       | 2D   | 15         |
++-----------+--------------+---------+-----------------+--------------------------+------+------------+
+| Heatsink  | Electronics  | 512     | 4,443,114       | 4                        | 3D   | 520        |
++-----------+--------------+---------+-----------------+--------------------------+------+------------+
 
 
 Models
 ------
-SIMSHIFT includes four machine learning models, commonly used in the field of AI for simulation.
+SIMSHIFT includes various implemented machine learning models, commonly used in the field of AI for simulation.
 
 1. **PointNet** [`Qi et al., 2017. <https://arxiv.org/abs/1612.00593>`_] integrates global context by aggregating local features from all input points into a shared global representation.
 
@@ -57,6 +57,8 @@ SIMSHIFT includes four machine learning models, commonly used in the field of AI
 3. **Transolver** [`Wu et al., 2024. <https://arxiv.org/abs/2402.02366>`_] is a state of the art Transformer-based model with Physics-Attention, to capture complex geometries and long-range interactions.
 
 4. **UPT** [`Alkin et al., 2024. <https://arxiv.org/abs/2402.12365>`_] is a state of the art neural operator with a focus on scalability, that represents fields in a latent space and directly learns latent dynamics.
+
+5. **GINO** [`Li et al., 2023. <https://arxiv.org/abs/2309.00583>`_] is a state of the art neural operator that operates on a regular latent grid in the frequency domain to capture global interactions.
 
 
 UDA Methods
@@ -71,6 +73,9 @@ SIMSHIFT implements several unsupervised domain adaptation (UDA) methods to addr
 
 3. **Domain-Adversarial Neural Network (DANN)** [`Ganin et al., 2016. <https://arxiv.org/abs/1505.07818>`_]
    introduces a domain classifier and adversarial loss that encourage the feature encoder to learn domain-invariant features.
+
+4. **DARE-GRAM** [`Nejjar et al., 2023. <https://arxiv.org/abs/2303.13325>`_]
+   aligns a selected low-rank subspace of the pseudo-inverse Gram matrices of source and target features.
 
 
 Model Selection

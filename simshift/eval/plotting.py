@@ -1,62 +1,91 @@
 from copy import deepcopy
-from typing import Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 import numpy as np
-import torch
 from matplotlib.ticker import FormatStrFormatter
 
 
-def plot_error_distribution(
-    losses_source: torch.Tensor, losses_target: torch.Tensor, bins: Optional[int] = None
-) -> matplotlib.figure.Figure:
-    """Plot a histogram comparing per-sample NRMSE losses for source and target domains,
-    using relative frequencies for each group.
+def plot_error_distribution_comparison(
+    losses_source, losses_target, bins=30, figsize=None
+):
+    """
+    Plot a histogram comparing source and target per-sample NRMSE losses with relative
+    frequencies. Styled for ICML submission.
 
-    Parameters:
-        losses_source (torch.Tensor): 1D tensor of source domain per-sample losses.
-        losses_target (torch.Tensor): 1D tensor of target domain per-sample losses.
-        bins (int, optional): Number of bins for the histograms. If None, a default is
-                              chosen.
+    Args:
+        losses_source (torch.Tensor): Tensor of shape [N] with source domain losses.
+        losses_target (torch.Tensor): Tensor of shape [M] with target domain losses.
+        bins (int, optional): Number of histogram bins. If None, it will be
+            automatically chosen.
+        figsize (tuple, optional): Figure size. Defaults to ICML single-column width.
 
     Returns:
-        matplotlib.figure.Figure: The matplotlib Figure object containing the plot.
+        matplotlib.figure.Figure: The resulting figure object.
     """
     losses_source_np = losses_source.cpu().numpy()
     losses_target_np = losses_target.cpu().numpy()
 
+    cutoff = np.percentile(np.concatenate([losses_source_np, losses_target_np]), 98)
+
+    # force the bins to stop at this cutoff
+    bins = np.linspace(0, cutoff, bins)  # fixed number of bins within the useful range
+
     if bins is None:
         bins = max(len(losses_source_np), len(losses_target_np)) // 20
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    if figsize is None:
+        figsize = (6, 4)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # colors matching the style from ranges_plots
+    c_source = (77 / 255, 156 / 255, 185 / 255)  # blue-ish
+    c_target = "#e3c477"  # gold/yellow
+
     ax.hist(
         losses_source_np,
-        bins=15,
-        color="#219ebc",
-        alpha=0.7,
+        bins=bins,
+        color=c_source,
+        alpha=0.75,
         label='Source',
         edgecolor='black',
+        linewidth=0.3,
         weights=np.ones_like(losses_source_np) / len(losses_source_np),
     )
     ax.hist(
         losses_target_np,
         bins=bins,
-        color="#e9c46a",
-        alpha=0.7,
+        color=c_target,
+        alpha=0.75,
         label='Target',
         edgecolor='black',
+        linewidth=0.3,
         weights=np.ones_like(losses_target_np) / len(losses_target_np),
     )
 
-    ax.set_xlabel("NRMSE per sample", fontsize=14)
-    ax.set_ylabel("Relative frequency", fontsize=14)
-    ax.set_title("Error distribution", fontsize=16)
-    ax.grid(True, axis="y", linestyle='--', alpha=0.5)
-    ax.legend()
-    ax.tick_params(axis='both', labelsize=12)
-    fig.tight_layout()
+    ax.set_xlabel("nRMSE per sample")
+    ax.set_ylabel("Relative frequency")
+    # explicitly set limit just in case
+    ax.set_xlim(0, cutoff)
+
+    # clean up spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_linewidth(0.5)
+    ax.spines['bottom'].set_linewidth(0.5)
+
+    # subtle grid
+    ax.grid(True, axis="y", linestyle='--', alpha=0.3, linewidth=0.5)
+    ax.set_axisbelow(True)
+
+    # legend
+    ax.legend(frameon=False, loc='upper right')
+
+    ax.tick_params(axis='both', which='both', direction='out', length=2, width=0.5)
+
+    fig.tight_layout(pad=0.3)
 
     return fig
 

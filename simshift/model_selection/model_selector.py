@@ -13,7 +13,11 @@ from simshift.model_selection.utils import (
     rolling_evaluate_middle_line,
     forming_evaluate_middle_line,
     motor_evaluate_chord,
-    heatsink_evaluate_middle_line
+    heatsink_evaluate_middle_line,
+    mises_stress_consistency,
+    yield_metrics,
+    fin_BC_consistency,
+    motor_constitutive_error,
 )
 
 from simshift.data.rolling_data import RollingDataset
@@ -196,13 +200,15 @@ class ModelSelector:
             _source_val_loss = get_mse_loss(
                 model, self.valloader_source, device=self.device
             )
-
             source_val_loss[i, :] = _source_val_loss.to("cpu")
-
+            # del _source_val_loss
+            # torch.cuda.empty_cache()
             _target_test_loss = get_mse_loss(
                 model, self.testloader_target, device=self.device
             )
             target_test_loss[i] = _target_test_loss.to("cpu").mean()
+            # del _target_test_loss
+            # torch.cuda.empty_cache()
 
         # compute aggregation weights for the different algorithms
         for i, algorithm in enumerate(self.algorithms):
@@ -350,11 +356,17 @@ class ModelSelector:
         # coordinates loss
         # denormalize predictions
         # ensemble_predictions: [n_algorithms, total_nodes, n_fields]
-        cond_source_denormalized, ensemble_predictions_source_denormalized = self.testset_source.denormalize(
+        (
+            cond_source_denormalized,
+            ensemble_predictions_source_denormalized,
+        ) = self.testset_source.denormalize(
             source_sample.cond,
             ensemble_predictions_source[..., : -source_sample.y_mesh_coords.shape[-1]],
         )  # slice to remove coordinates
-        cond_target_denormalized, ensemble_predictions_target_denormalized = self.testset_target.denormalize(
+        (
+            cond_target_denormalized,
+            ensemble_predictions_target_denormalized,
+        ) = self.testset_target.denormalize(
             source_sample.cond,
             ensemble_predictions_target[..., : -target_sample.y_mesh_coords.shape[-1]],
         )
@@ -454,6 +466,7 @@ class ModelSelector:
         )
         rmse_tgt_deformation = rmse_tgt_coords_per_graph.mean(1)
 
+        physics_metrics = {}
         # Dataset specific evaluation loss
         if isinstance(self.testset_source, RollingDataset):
             custom_error_source = rolling_evaluate_middle_line(
@@ -462,7 +475,7 @@ class ModelSelector:
                 coords=source_gt_coords_denormalized,
                 batch_indices=source_batch_index,
                 x_rel_tol=0.001,
-                channel=self.testset_source.channels["nodes_PEEQ"],
+                channel=self.testset_source.channels["equivalent_plastic_strain"],
                 eps=0.001,
             )
             custom_error_target = rolling_evaluate_middle_line(
@@ -471,9 +484,35 @@ class ModelSelector:
                 coords=target_gt_coords_denormalized,
                 batch_indices=target_batch_index,
                 x_rel_tol=0.001,
-                channel=self.testset_target.channels["nodes_PEEQ"],
+                channel=self.testset_target.channels["equivalent_plastic_strain"],
                 eps=0.001,
             )
+            vm_consistency_error_source = mises_stress_consistency(
+                stresses_pred=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["cauchy_stress"]
+                ],
+                mises_pred=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["mises_stress"]
+                ],
+                batch_indices=source_batch_index,
+                eps=10,
+            )
+            physics_metrics[
+                "test_loss_vmconsistency_source"
+            ] = vm_consistency_error_source
+            vm_consistency_error_target = mises_stress_consistency(
+                stresses_pred=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["cauchy_stress"]
+                ],
+                mises_pred=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["mises_stress"]
+                ],
+                batch_indices=target_batch_index,
+                eps=10,
+            )
+            physics_metrics[
+                "test_loss_vmconsistency_target"
+            ] = vm_consistency_error_target
 
         elif isinstance(self.testset_source, FormingDataset):
             custom_error_source = forming_evaluate_middle_line(
@@ -496,6 +535,60 @@ class ModelSelector:
                 dataset=self.testset_target,
                 eps=1,
             )
+            vm_consistency_error_source = mises_stress_consistency(
+                stresses_pred=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["s"]
+                ],
+                mises_pred=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["mises"]
+                ],
+                batch_indices=source_batch_index,
+                eps=10,
+            )
+            physics_metrics[
+                "test_loss_vmconsistency_source"
+            ] = vm_consistency_error_source
+            vm_consistency_error_target = mises_stress_consistency(
+                stresses_pred=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["s"]
+                ],
+                mises_pred=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["mises"]
+                ],
+                batch_indices=target_batch_index,
+                eps=10,
+            )
+            physics_metrics[
+                "test_loss_vmconsistency_target"
+            ] = vm_consistency_error_target
+            elastic_frac_source, plastic_res_source = yield_metrics(
+                vm=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["mises"]
+                ],
+                peeq=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["peeq"]
+                ],
+                sigma_y0=410.1,
+                H=2268,
+                batch_indices=source_batch_index,
+                peeq_tol=1e-6,
+            )
+            physics_metrics["test_loss_elasticfrac_source"] = elastic_frac_source
+            physics_metrics["test_loss_plasticres_source"] = plastic_res_source
+            elastic_frac_target, plastic_res_target = yield_metrics(
+                vm=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["mises"]
+                ],
+                peeq=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["peeq"]
+                ],
+                sigma_y0=410.1,
+                H=2268,
+                batch_indices=target_batch_index,
+                peeq_tol=1e-6,
+            )
+            physics_metrics["test_loss_elasticfrac_target"] = elastic_frac_target
+            physics_metrics["test_loss_plasticres_target"] = plastic_res_target
 
         elif isinstance(self.testset_source, MotorDataset):
             custom_error_source = motor_evaluate_chord(
@@ -505,7 +598,7 @@ class ModelSelector:
                 conds=cond_source_denormalized,
                 batch_indices=source_batch_index,
                 x_rel_tol=0.05,
-                channel=self.testset_source.channels["stress_mises"],
+                channel=0,  # xx component of cauchy stress
                 dataset=self.testset_source,
                 eps=1,
             )
@@ -516,10 +609,34 @@ class ModelSelector:
                 conds=cond_target_denormalized,
                 batch_indices=target_batch_index,
                 x_rel_tol=0.05,
-                channel=self.testset_source.channels["stress_mises"],
+                channel=0,  # xx component of cauchy stress
                 dataset=self.testset_target,
                 eps=1,
             )
+            constitutive_error_source = motor_constitutive_error(
+                logarithmic_strain=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["logarithmic_strain"]
+                ],
+                cauchy_stress=ensemble_predictions_source_denormalized[
+                    :, :, self.testset_source.channels["cauchy_stress"]
+                ],
+                mesh_material=source_sample.mesh_material,
+                batch_indices=source_batch_index,
+                eps=1e-6,
+            )
+            physics_metrics["test_loss_constitutive_source"] = constitutive_error_source
+            constitutive_error_target = motor_constitutive_error(
+                logarithmic_strain=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["logarithmic_strain"]
+                ],
+                cauchy_stress=ensemble_predictions_target_denormalized[
+                    :, :, self.testset_target.channels["cauchy_stress"]
+                ],
+                mesh_material=target_sample.mesh_material,
+                batch_indices=target_batch_index,
+                eps=1e-6,
+            )
+            physics_metrics["test_loss_constitutive_target"] = constitutive_error_target
 
         elif isinstance(self.testset_source, HeatsinkDataset):
             custom_error_source = heatsink_evaluate_middle_line(
@@ -531,7 +648,7 @@ class ModelSelector:
                 z_rel_tol=0.05,
                 z_fixed=0.025,
                 channel=self.testset_source.channels["T"],
-                eps=1e-2
+                eps=1e-2,
             )
             custom_error_target = heatsink_evaluate_middle_line(
                 preds=ensemble_predictions_target_denormalized,
@@ -542,11 +659,28 @@ class ModelSelector:
                 z_rel_tol=0.05,
                 z_fixed=0.025,
                 channel=self.testset_target.channels["T"],
-                eps=1e-2
+                eps=1e-2,
             )
+            temp_err_source, vel_err_source = fin_BC_consistency(
+                gt=source_gt_denormalized,
+                pred=ensemble_predictions_source_denormalized,
+                cond=cond_source_denormalized,
+                dataset=self.testset_source,
+                batch_indices=source_batch_index,
+            )
+            physics_metrics["test_loss_bcviolt_source"] = temp_err_source
+            physics_metrics["test_loss_bcviolv_source"] = vel_err_source
+            temp_err_target, vel_err_target = fin_BC_consistency(
+                gt=target_gt_denormalized,
+                pred=ensemble_predictions_target_denormalized,
+                cond=cond_target_denormalized,
+                dataset=self.testset_target,
+                batch_indices=target_batch_index,
+            )
+            physics_metrics["test_loss_bcviolt_target"] = temp_err_target
+            physics_metrics["test_loss_bcviolv_target"] = vel_err_target
         else:
             raise ValueError("Wrong dataset?!")
-
 
         return (
             source_loss_per_algorithm,
@@ -556,5 +690,6 @@ class ModelSelector:
             rmse_src_deformation,
             rmse_tgt_deformation,
             custom_error_source,
-            custom_error_target
+            custom_error_target,
+            physics_metrics,
         )

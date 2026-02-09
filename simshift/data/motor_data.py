@@ -29,6 +29,10 @@ class MotorDataset(BaseDataset):
     """Electric Motor dataset class."""
 
     dataset_id = "motor"
+    field_names = [
+        "cauchy_stress",
+        "logarithmic_strain",
+    ]
 
     def __init__(
         self,
@@ -57,28 +61,19 @@ class MotorDataset(BaseDataset):
             y_mesh_coords=sample["y_mesh_coords"],
             mesh_edges=sample["edge_index"],
             mesh_material=sample["mesh_material"],
+            sample_id=sample["sample_id"],
+            mesh_element_connectivity=sample["mesh_element_connectivity"],
         )
 
-    def collate(self, batch: Sequence[BaseSample]):
-        n_nodes = [sample.mesh_coords.shape[0] for sample in batch]
-        node_offsets = torch.cumsum(torch.tensor([0] + n_nodes[:-1]), dim=0)
-        edge_index = torch.cat(
-            [
-                sample.mesh_edges + offset
-                for sample, offset in zip(batch, node_offsets, strict=False)
-            ],
-            dim=0,
-        ).T
-        n_nodes = torch.tensor(n_nodes)
-        graph_index = torch.repeat_interleave(torch.arange(n_nodes.shape[0]), n_nodes)
-
+    def collate(self, batch: Sequence[MotorSample]):
+        base_sample = super().collate(batch)
         return MotorSample(
-            cond=torch.stack([sample.cond for sample in batch]),
-            y=torch.cat([sample.y for sample in batch], dim=0),
-            mesh_coords=torch.cat([sample.mesh_coords for sample in batch], dim=0),
-            y_mesh_coords=torch.cat([sample.y_mesh_coords for sample in batch], dim=0),
-            mesh_edges=edge_index,
-            batch_index=graph_index,
+            cond=base_sample.cond,
+            y=base_sample.y,
+            mesh_coords=base_sample.mesh_coords,
+            y_mesh_coords=base_sample.y_mesh_coords,
+            mesh_edges=base_sample.mesh_edges,
+            batch_index=base_sample.batch_index,
             mesh_material=torch.cat([sample.mesh_material for sample in batch], dim=0),
         )
 

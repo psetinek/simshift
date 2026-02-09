@@ -49,14 +49,16 @@ class Metrics:
         if key not in self.metric_names:
             self.metric_names.append(key)
 
-    def calculate_all_metrics(self, pred, gt):
+    def calculate_all_metrics(self, pred, gt, batch_size=None):
         metrics_dict = {}
         for name, fn in self.metric_funcs.items():
             value = fn(pred, gt)
             if "max" in name:
                 metrics_dict[name] = value.item()
             else:
-                bs = pred.shape[0]
+                # Use provided batch_size (number of samples), NOT pred.shape[0]
+                # (number of nodes)
+                bs = batch_size if batch_size is not None else 1
                 metrics_dict[name] = (
                     value.item() * bs,
                     bs,
@@ -77,8 +79,8 @@ class Metrics:
                         0,
                     ]  # [weighted sum, total count]
 
-    def update_domain_metrics(self, pred, gt, domain):
-        batch_metrics = self.calculate_all_metrics(pred, gt)
+    def update_domain_metrics(self, pred, gt, domain, batch_size=None):
+        batch_metrics = self.calculate_all_metrics(pred, gt, batch_size=batch_size)
         for name, value in batch_metrics.items():
             if "max" in name:
                 self._epoch_accum[domain][name] = max(

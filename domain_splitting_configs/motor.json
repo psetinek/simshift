@@ -1,0 +1,12 @@
+{
+    "seed": 42,
+    "source_ratios": [0.6, 0.2, 0.2],
+    "target_ratios": [0.6, 0.4],
+    "split_param": "Geometry.Rotor.dr3",
+    "source_range": [0, 119],
+    "target_ranges": {
+        "easy": [119, 122],
+        "medium": [121, 123],
+        "hard": [122, 126]
+    }
+}

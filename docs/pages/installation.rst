@@ -57,7 +57,15 @@ For PyTorch ``2.6.0`` and CUDA ``12.6``, use:
 
     pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
 
-**6. Install SIMSHIFT**
+**6. Install torch-cluster**
+
+Then additionally  install torch-cluster with:
+
+.. code-block:: bash
+
+    pip install torch-cluster -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
+
+**7. Install SIMSHIFT**
 
 Finally, install the simshift package in editable mode:
 

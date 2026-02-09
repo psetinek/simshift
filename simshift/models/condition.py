@@ -87,7 +87,7 @@ class Film(nn.Module):
 class DiT(nn.Module):
     """
     Gated modulation layer producing multiple scale, shift, and gate parameters.
-    
+
     https://arxiv.org/abs/2212.09748
 
     Args:
