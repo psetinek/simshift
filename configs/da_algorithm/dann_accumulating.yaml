@@ -1,0 +1,5 @@
+name: DANN_accumulating
+da_loss_weight: 1e-8
+kwargs:
+  discriminator_hidden_sizes: [16, 32, 16]
+  logical_batch_size: 16

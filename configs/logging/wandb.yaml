@@ -1,5 +1,5 @@
 writer: wandb
-wandb_project: simshift
-wandb_entity: simshift_entity
-experiment_id: my_experiment
+wandb_project: my_project
+wandb_entity: my_entity
+experiment_id: my_experiment_id
 run_id: null

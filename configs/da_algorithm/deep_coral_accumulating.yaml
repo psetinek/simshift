@@ -1,0 +1,4 @@
+name: deep_coral_accumulating
+da_loss_weight: 0.
+kwargs:
+  logical_batch_size: 16

@@ -30,7 +30,8 @@ def run(cfg: DictConfig):
 
     model = get_model(cfg, dataset=datasets[0])
     print(
-        f"Model parameters: {(sum(p.numel() for p in model.parameters()) / 1e6):.2f}M"
+        f"Model parameters: {(sum(p.numel() for p in model.parameters()) / 1e6):.2f}M",
+        flush=True,
     )
 
     DAAlgorithm = get_da_algorithm(cfg.da_algorithm.name)

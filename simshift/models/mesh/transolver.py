@@ -34,7 +34,6 @@ class TransolverAttention(nn.Module):
     :type slice_base: int
     """
 
-
     def __init__(
         self,
         dim: int = 128,
@@ -77,7 +76,9 @@ class TransolverAttention(nn.Module):
         qkv = rearrange(self.qkv(slice_att), "b h g (thr c) -> thr b h g c", thr=3)
         q, k, v = qkv[0], qkv[1], qkv[2]
         if self.training:
-            att = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_dropout_prob)
+            att = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=self.attn_dropout_prob
+            )
         else:
             att = F.scaled_dot_product_attention(q, k, v, dropout_p=0)
         # merge (cross attention)
@@ -240,7 +241,6 @@ class Transolver(nn.Module):
             )
             blocks.append(block)
         self.blocks = nn.ModuleList(blocks)
-
 
         # decode latent to fields (+ positions)
         self.decoder = MLP(

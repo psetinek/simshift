@@ -137,7 +137,7 @@ class (`source code <https://github.com/psetinek/simshift/blob/main/simshift/da_
         def _my_new_da_loss(self, source_features, target_features):
             ...
 
-Once registered, create a config for you UDA algorithm. See e.g. the example config for cmd (`source code <https://github.com/psetinek/simshift/blob/main/configs/da_algorithm/cmd.yaml>_`). It could look something like this:
+Once registered, create a config for you UDA algorithm. See e.g. the example config for cmd (`source code <https://github.com/psetinek/simshift/blob/main/configs/da_algorithm/cmd.yaml>`_). It could look something like this:
 
 .. code-block:: yaml
 

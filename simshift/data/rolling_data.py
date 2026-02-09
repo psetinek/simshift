@@ -19,6 +19,13 @@ class RollingDataset(BaseDataset):
     """Rolling dataset class."""
 
     dataset_id = "rolling"
+    field_names = [
+        "cauchy_stress",
+        "mises_stress",
+        "logarithmic_strain",
+        "equivalent_plastic_strain",
+        "temperature",
+    ]
 
     def __init__(
         self,

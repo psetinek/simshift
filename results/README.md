@@ -12,13 +12,13 @@ To start a run from the command line, adapt your config files as needed (for the
 python main.py
 ```
 
-Now for benchmarking purposes, one likely wants to spawn multiple runs at the same time. Therefore we provide a [launcher](../launcher.py) to make this easier. All arguments that are passed besides the max_concurrent processed and the gpus that should be used, will be sweeped over. So again to continue reproducing our partial result, we can simply run:
+For benchmarking purposes, one likely wants to spawn multiple runs at the same time. Therefore we provide a [launcher](../launcher.py) to make this easier. All arguments that are passed besides the max_concurrent and the gpus, will be sweeped over. So again to continue reproducing our partial result, we can simply run:
 
 ```
-python launcher.py --max_concurrent=4 --gpus=0,1,2,3 seed=42,43,44,45 da_algorithm.da_loss_weight=0,0.1,0.01,0.001,0.0001,0.00001,1e-6,1e-7,1e-8,1e-9
+python launcher.py --max_concurrent=4 --gpus=0,1,2,3 seed=42,43,44,45 da_algorithm.da_loss_weight=0,0.1,0.01,0.001,0.0001,0.00001,1e-6,1e-7
 ```
 
-This command will then train 4 models without domain adaptation regularization and a total 36 (9x4) models with the respective loss scaling terms. With this command, we will continuously spawn processes until all combinations of the provided parameters have been run.
+This command will then train 4 models without domain adaptation regularization and a total 28 (7x4) models with the respective loss scaling terms. With this command, we will continuously spawn processes until all combinations of the provided parameters have been run.
 
 After having trained those models, we will want to run unsupervised model selection. To run all implemented model selection strategies (Source Best (SB), Target Best(TB), Deep Embedded Validation (DEV) and Importance Weighted Validation (IWV)) for the runs above, this would look something like the following:
 
@@ -26,6 +26,6 @@ After having trained those models, we will want to run unsupervised model select
 python run_model_selection.py --entity=<your_configured_wandb_entity> --project=<your_configured_wandb_project>  --experiment-id=<your_configured_wandb_experiment_id>  --model-dir=<your_configured_directoriy_of_ckpts> --batch-size=64 --device=cuda --output-dir=./results/model_selection_results --selection-algs SB TB DEV IWV
 ```
 
-This script will save a dataframe containing the results reported in the main tables for PointNet + Deep Coral and all the different unsupervised model selection strategies. You can then postprocess them as you like to display your results, an example for postprocessing is given [here](./postprocess_results.ipynb).
+This script will save a ``.csv`` containing the results reported in the main tables for PointNet + Deep Coral and all the different unsupervised model selection strategies. You can then postprocess them as you like to display your results as you like. An example for postprocessing is given [here](./postprocess_results.ipynb).
 
 Obtaining the results on other datasets and UDA algorithms is exactly analogous to the described steps, simply with e.g. a different model or dataset config linked in the [main config](../configs/main.yaml).

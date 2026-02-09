@@ -1,0 +1,4 @@
+name: dare_gram_accumulating
+da_loss_weight: 0.001
+kwargs:
+  logical_batch_size: 16

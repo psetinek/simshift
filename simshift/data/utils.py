@@ -13,7 +13,23 @@ def download_data(repo_id: str, filename: str, local_dir: str):
 
     # extract zipfile
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(local_dir)
+        members = zip_ref.namelist()
+
+        # find common prefix (top-level folder)
+        prefix = os.path.commonprefix(members)
+        if prefix and not prefix.endswith("/"):
+            prefix = prefix[: prefix.rfind("/") + 1]
+
+        for member in members:
+            target = member[len(prefix) :]  # strip prefix
+            if not target:
+                continue  # skip top-level directory itself
+
+            target_path = os.path.join(local_dir, target)
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+            with zip_ref.open(member) as src, open(target_path, "wb") as dst:
+                dst.write(src.read())
 
     # remove zip
     os.remove(zip_path)

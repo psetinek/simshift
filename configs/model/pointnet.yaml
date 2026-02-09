@@ -4,4 +4,4 @@ hparams:
   dropout_prob: 0
   pointnet_base: 16
   conditioning_bn: false
-  conditioning_ln: false
+  conditioning_ln: true

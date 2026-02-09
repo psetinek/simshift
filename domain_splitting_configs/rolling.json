@@ -1,0 +1,12 @@
+{
+    "seed": 42,
+    "source_ratios": [0.6, 0.2, 0.2],
+    "target_ratios": [0.6, 0.4],
+    "split_param": "reduction",
+    "source_range": [0.01, 0.10],
+    "target_ranges": {
+        "easy": [0.10, 0.125],
+        "medium": [0.115, 0.14],
+        "hard": [0.125, 0.15]
+    }
+}

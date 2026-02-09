@@ -19,6 +19,7 @@ class FormingDataset(BaseDataset):
     """Forming dataset class."""
 
     dataset_id = "forming"
+    field_names = ["s", "mises", "le", "peeq"]
 
     def __init__(
         self,
@@ -40,7 +41,6 @@ class FormingDataset(BaseDataset):
 
 
 def get_forming_dataset(
-    # path: str,
     split: str,
     normalization_method: Literal["zscore", "minmax"] = "zscore",
     normalization_stats: Optional[Dict] = None,

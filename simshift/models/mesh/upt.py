@@ -1,58 +1,59 @@
 # Emmi AI Code License Agreement (Non-Commercial, Non-Transferable)
 
-# This License Agreement is made between Emmi AI GmbH (“Licensor”) and RISC (“Licensee”).
+# This License Agreement is made between Emmi AI GmbH (“Licensor”) and RISC
+# (“Licensee”).
 # It governs Licensee’s use of the software code provided by Licensor (the “Software”).
 
 # The parties agree to the following terms:
 
 # 1. License Grant and Permitted Use
 
-# Licensor grants Licensee a perpetual, worldwide, non-exclusive, non-transferable license
-# to use, copy, and modify the
-# Software solely for Licensee’s internal, non-commercial purposes. This license does not
-# transfer ownership of the
-# Software; all intellectual property rights in the Software remain with the Licensor. All
-# rights not expressly granted
-# to Licensee are reserved by Licensor.
+# Licensor grants Licensee a perpetual, worldwide, non-exclusive, non-transferable
+# license to use, copy, and modify the
+# Software solely for Licensee’s internal, non-commercial purposes. This license does
+# not transfer ownership of the
+# Software; all intellectual property rights in the Software remain with the Licensor.
+# All rights not expressly granted to Licensee are reserved by Licensor.
 
 # 2. Restrictions
 
 # Licensee must not engage in any of the following activities:
 
-# - No Commercial Use: The Software may not be used in any product or service that is sold
-#                      or that generates revenue.
+# - No Commercial Use: The Software may not be used in any product or service that is
+#                      sold or that generates revenue.
 #   Licensee shall not use the Software for any commercial purpose or for monetary gain.
 
-# - No Distribution or Sharing: Licensee shall not publish, distribute, share, or make the
-#                               Software (or any modified
-#   version or derivative work of the Software) available to any third party. The Software
-#   is for Licensee’s use only and
-#   may not be sublicensed, assigned, or transferred to others in any form.
+# - No Distribution or Sharing: Licensee shall not publish, distribute, share, or make
+#                               the Software (or any modified
+#                               version or derivative work of the Software) available to
+#                               any third party. The Software is for Licensee’s use
+#                               only and may not be sublicensed, assigned, or
+#                               transferred to others in any form.
 
-# - Preservation of Notices: Licensee shall not remove or alter any copyright, trademark,
-#                            or attribution notices present in the Software. Any copies
-#                            or modifications of the Software that Licensee creates must
-#                            include all original notices.
+# - Preservation of Notices: Licensee shall not remove or alter any copyright,
+#                            trademark, or attribution notices present in the Software.
+#                            Any copies or modifications of the Software that Licensee
+#                            creates must include all original notices.
 
 
 # 3. Attribution Requirement
 
-# Licensee must give appropriate credit to Emmi AI GmbH in any use of the Software or in 
+# Licensee must give appropriate credit to Emmi AI GmbH in any use of the Software or in
 # any derivative works or materials based on the Software. This attribution should be
-# clear and reasonably prominent, for example by citing Emmi AI GmbH as the source of the
-# code in documentation, research papers, or other materials where the Software or its
-# derivatives are used.
+# clear and reasonably prominent, for example by citing Emmi AI GmbH as the source of
+# the code in documentation, research papers, or other materials where the Software or
+# its derivatives are used.
 
 
 # 4. Term and Termination
 
-# This Agreement is effective from the date Licensee receives the Software and remains in
-# force perpetually (with no expiration date), unless terminated as described here.
+# This Agreement is effective from the date Licensee receives the Software and remains
+# in force perpetually (with no expiration date), unless terminated as described here.
 # Licensor may terminate this Agreement immediately upon written notice if Licensee
 # breaches any of the terms and conditions. Upon termination, Licensee must immediately
-# cease all use of the Software and destroy any copies of the Software and any derivative
-# works in Licensee’s possession. The provisions of this Agreement relating to
-# intellectual property ownership, attribution, disclaimer of warranties,
+# cease all use of the Software and destroy any copies of the Software and any
+# derivative works in Licensee’s possession. The provisions of this Agreement relating
+# to intellectual property ownership, attribution, disclaimer of warranties,
 # limitation of liability, and governing law shall survive any termination of the
 # Agreement.
 
@@ -60,10 +61,10 @@
 # 5. Disclaimer of Warranties
 
 # The Software is provided on an “as is” basis, without any warranties of any kind.
-# Licensor makes no guarantees or conditions, express or implied, regarding the Software.
-# This includes, but is not limited to, implied warranties of merchantability, fitness
-# for a particular purpose, and non-infringement. Licensee assumes all risks associated
-# with the use or performance of the Software.
+# Licensor makes no guarantees or conditions, express or implied, regarding the
+# Software. This includes, but is not limited to, implied warranties of merchantability,
+# fitness for a particular purpose, and non-infringement. Licensee assumes all risks
+# associated with the use or performance of the Software.
 
 
 # 6. Limitation of Liability
@@ -82,10 +83,10 @@
 # 7. Governing Law
 
 # This License Agreement is governed by and construed in accordance with the laws of
-# Austria. All disputes arising from or related to this Agreement shall be subject to the
-# jurisdiction of the competent courts of Austria. Both Licensor and Licensee agree to
-# submit to the personal jurisdiction of such courts, if necessary, in order to resolve
-# any disputes.
+# Austria. All disputes arising from or related to this Agreement shall be subject to
+# the jurisdiction of the competent courts of Austria. Both Licensor and Licensee agree
+# to submit to the personal jurisdiction of such courts, if necessary, in order to
+# resolve any disputes.
 
 
 """
@@ -169,32 +170,31 @@ class SupernodePooling(nn.Module):
     - A radius-based graph is used instead of `radius_graph`, which is more efficient.
 
     Args:
-        radius (float):  
+        radius (float):
             Radius around each supernode. Messages are passed from points within radius.
 
-        hidden_dim (int):  
+        hidden_dim (int):
             Hidden dimension for positional embeddings, messages, and output vectors.
 
-        input_dim (int):  
+        input_dim (int):
             Number of input features (set to `None` if only positions are used).
 
-        ndim (int):  
+        ndim (int):
             Number of positional dimensions (e.g., `ndim=2` for 2D, `ndim=3` for 3D).
 
-        max_degree (int):  
+        max_degree (int):
             Maximum degree for the radius graph.
 
-        init_weights (str):  
+        init_weights (str):
             Weight initialization method for linear layers.
 
-        readd_supernode_pos (bool):  
+        readd_supernode_pos (bool):
             If `True`, the absolute positional encoding of the supernode is concatenated
             to the supernode vector after message passing and projected to `hidden_dim`.
 
-        aggregation (str):  
+        aggregation (str):
             Aggregation method for message passing. One of `"mean"` or `"sum"`.
     """
-
 
     def __init__(
         self,
@@ -392,7 +392,7 @@ class DeepPerceiverDecoderConditioned(nn.Module):
             pos: Query positions (batch_size, num_output_pos, pos_dim).
             block_kwargs: Additional arguments for the block.
             unbatch_mask: Unbatch mask.
-        
+
         Returns:
             The predictions as sparse tensor
             (batch_size * num_output_pos, num_out_values).
@@ -470,9 +470,11 @@ class UPT(nn.Module):
         mlp_expansion_factor: int = 4,
         num_supernodes: int = 8000,
         supernodes_max_neighbours: int = 32,
+        dropout_prob: float = 0.1,
         out_deformation: bool = False,
         n_materials: int = 1,
         conditioning_bn: bool = False,
+        conditioning_ln: bool = False,
     ):
         super().__init__()
         self.num_supernodes = num_supernodes
@@ -482,9 +484,9 @@ class UPT(nn.Module):
             MLP(
                 [256, 256 // 2, 256 // 4, latent_channels],
                 act_fn=nn.SiLU,
-                last_act_fn=nn.SiLU,
-                dropout_prob=0.1,
-                batchnorm=conditioning_bn
+                dropout_prob=dropout_prob,
+                batchnorm=conditioning_bn,
+                layernorm=conditioning_ln,
             ),
         )
 

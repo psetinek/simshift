@@ -16,32 +16,32 @@ def iwv(weights: torch.Tensor, source_val_loss: torch.Tensor, **kwargs) -> torch
 
     Where for :math:`M` candidate models and :math:`N` validation samples:
 
-    - :math:`w_{ij}`: Learned weight for model :math:`i` on sample :math:`j`  
+    - :math:`w_{ij}`: Learned weight for model :math:`i` on sample :math:`j`
     (typically :math:`\sum_j w_{ij} = 1`)
     - :math:`\ell_{ij}`: Validation loss for model :math:`i` on sample :math:`j`
 
     Selects the model with minimal :math:`R_{\mathrm{IWV}}`.
 
-    **Reference**:  
-    Sugiyama et al., *"Importance-Weighted Validation for Robust Model Selection"*  
+    **Reference**:
+    Sugiyama et al., *"Importance-Weighted Validation for Robust Model Selection"*
     https://jmlr.org/papers/v8/sugiyama07a.html
 
     Args:
-        weights (Tensor):  
+        weights (Tensor):
             Tensor of shape :math:`[M, N]`. Learned relative weights for :math:`M`
             candidate models across :math:`N` validation samples.
 
-        source_val_loss (Tensor):  
+        source_val_loss (Tensor):
             Tensor of shape :math:`[M, N]`. Validation losses where lower values
             indicate better model performance.
 
-        **kwargs:  
+        **kwargs:
             Ignored arguments (maintained for API compatibility)
 
     Returns:
-        Tensor:  
+        Tensor:
             Tensor of shape :math:`[M]`. One-hot encoded selection vector where 1
-            indicates the chosen model.  
+            indicates the chosen model.
             Example: For 3 models with minimum at index 1, returns
             :code:`tensor([0., 1., 0.])`
     """

@@ -1,3 +1,8 @@
+import toml
+import os
+import sys
+import collections
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -11,8 +16,6 @@ copyright = "2025, Paul Setinek, JKU"
 author = "Paul Setinek, Gianluca Galletti"
 
 # read the version from pyproject.toml
-import toml
-
 pyproject = toml.load("../pyproject.toml")
 version = pyproject["project"]["version"]
 
@@ -21,13 +24,8 @@ version = pyproject["project"]["version"]
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-import os
-import sys
 
 sys.path.insert(0, os.path.abspath(".."))
-
-import collections
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -74,6 +72,12 @@ autodoc_mock_imports = [
     "sklearn",
     "tqdm",
     "huggingface_hub",
+    "wandb",
+    "neuralop",
+    "safetensors",
+    "transformers",
+    "pandas",
+    "numpy",
 ]
 
 # -- Options for sphinx-exec-code ---------------------------------------------

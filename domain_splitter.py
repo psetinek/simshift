@@ -13,193 +13,146 @@ from sklearn.model_selection import train_test_split
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Split HDF5 dataset into source/target domains and splits."
+        description="Split HDF5 dataset into source/target domains and train/val/test splits."
     )
-    p.add_argument("--data-path", required=True, help="Path to the .h5 dataset file.")
+    p.add_argument("--data-path", required=True, help="Path to the dataset folder.")
     p.add_argument(
-        "--src-filters",
-        required=False,
+        "--config-file",
+        required=True,
         default=None,
-        help="JSON dict mapping condition -> [min,max], e.g. \"{'thickness':[50,150], 'temp_core':[900,1100]}\"",
-    )
-
-    p.add_argument(
-        "--src-ratios",
-        nargs=3,
-        type=float,
-        default=(0.5, 0.25, 0.25),
-        metavar=("TRAIN", "VAL", "TEST"),
-        help="Source domain ratios (must sum to 1). Default: 0.5 0.25 0.25",
+        help="Path to json file with the domain ranges and the ratios.",
     )
     p.add_argument(
-        "--tgt-ratios",
-        nargs=2,
-        type=float,
-        default=(0.5, 0.5),
-        metavar=("TRAIN", "TEST"),
-        help="Target domain ratios (must sum to 1). Default: 0.5 0.5",
-    )
-    p.add_argument("--seed", type=int, default=42, help="Random seed.")
-    p.add_argument(
-        "--output-dir", required=True, help="Directory to write splits.json."
+        "--output-name",
+        required=False,
+        default="splits.json",
+        help="Name for the output splits file (e.g. splits.json).",
     )
     return p.parse_args()
 
 
-def summarize_conditions(df: pd.DataFrame) -> dict:
-    """
-    Summarize ranges for each condition column (min, max).
-
-    Returns:
-        dict of {cond_name: {"min": float, "max": float}}
-    """
-    summary = {}
-    for col in df.columns:
-        if col == "sample_id":
-            continue
-        vals = pd.to_numeric(df[col], errors="coerce")
-        summary[col] = {
-            "min": float(np.nanmin(vals.values)),
-            "max": float(np.nanmax(vals.values)),
-        }
-    return summary
-
-
-def get_conditioning_dataframe(dataset_path: str) -> pd.DataFrame:
-    """
-    Build a DataFrame of per-sample condition values.
-
-    The resulting DataFrame has:
-        'sample_id' : str
-        <cond_name> : float         (one column per condition)
-
-    Args:
-        dataset_path: Path to the .h5 dataset.
-
-    Returns:
-        DataFrame with one row per sample and columns as described above.
-    """
-    rows = []
-    with h5py.File(dataset_path, "r") as f:
-        # get conditioning slices lookup df
-        condition_names = list(f["metadata"]["cond"].keys())
-        condition_slices = {}
-        for condition_name in condition_names:
-            condition_slices[condition_name] = f["metadata"]["cond"][condition_name][:]
-
-        # gather dict rows
-        sample_ids = list(f["data"].keys())
-        for sample_id in sample_ids:
-            df_row = {}
-            df_row["sample_id"] = sample_id
-            for cond_name, cond_slice in condition_slices.items():
-                df_row[cond_name] = f["data"][sample_id]["cond"][:][cond_slice].item()
-            rows.append(df_row)
-    return pd.DataFrame(rows)
-
-
-def split_domains(
+def split_domains_multi_difficulty(
     cond_df: pd.DataFrame,
-    src_filters: Dict[str, Iterable | float],
-    src_ratios: Tuple[float, float, float] = (0.5, 0.25, 0.25),
-    tgt_ratios: Tuple[float, float] = (0.5, 0.5),
+    src_range: list,
+    target_ranges: dict,
+    split_col: str,
+    src_ratios: tuple = (0.6, 0.2, 0.2),
+    tgt_ratios: tuple = (0.6, 0.4),
     seed: int = 42,
+    exclusive_upper: bool = True,
 ) -> dict:
     """
-    Filter a dataframe of conditions into source/target domains and then
-    split each into train/val/test (source) and train/test (target).
-
+    Split domains into easy, medium, and hard based on difficulty ranges.
+    
     Args:
-        cond_df: DataFrame with columns ["sample_id", <cond1>, <cond2>, ...].
-        src_filters: dict mapping condition name -> scalar or [min, max] range.
-                     Rows satisfying all filter ranges go to the source domain;
-                     the complement goes to the target domain.
-        src_ratios: (train, val, test) fractions that sum to 1.0 for source.
-        tgt_ratios: (train, test) fractions that sum to 1.0 for target.
-        seed: RNG seed for reproducible splits.
-
+        cond_df: DataFrame with condition columns
+        src_range: [min, max] range for source domain
+        target_ranges: Dict with keys 'easy', 'medium', 'hard' mapping to [min, max] ranges for target
+        split_col: Column name to use for splitting
+        src_ratios: Tuple of (train, val, test) ratios for source domain
+        tgt_ratios: Tuple of (train, test) ratios for target domain
+        seed: Random seed for reproducibility
+        exclusive_upper: If True, use [min, max) intervals to avoid overlap
+    
     Returns:
-        Nested dict:
-        {
-          "medium": {
-            "src": {"train": [...], "val": [...], "test": [...]},
-            "tgt": {"train": [...], "val": [],   "test": [...]}
-          }
-        }
+        Dict with splits for each difficulty level
     """
     original_cond_df = deepcopy(cond_df)
-    # filter source and target indices
-    for condition_name, source_range in src_filters.items():
-        cond_df = cond_df[
-            (cond_df[condition_name] >= min(source_range))
-            & (cond_df[condition_name] <= max(source_range))
+    splits = {}
+    
+    # Fixed source domain
+    source_range = src_range
+    if exclusive_upper:
+        filtered_df = original_cond_df[
+            (original_cond_df[split_col] >= source_range[0]) &
+            (original_cond_df[split_col] < source_range[1])
         ]
-    sample_ids_source = list(cond_df["sample_id"])
-    sample_ids_target = list(
-        original_cond_df[~original_cond_df["sample_id"].isin(sample_ids_source)][
-            "sample_id"
+    else:
+        filtered_df = original_cond_df[
+            (original_cond_df[split_col] >= source_range[0]) &
+            (original_cond_df[split_col] <= source_range[1])
         ]
-    )
-
-    # create train, test, val splits
+    sample_ids_source = list(filtered_df["sample_id"])
+    
+    # Create source splits (same for all difficulties)
     src_train, src_val_test = train_test_split(
         sample_ids_source, train_size=src_ratios[0], random_state=seed
     )
     src_val, src_test = train_test_split(
-        src_val_test, train_size=src_ratios[1] / (1 - src_ratios[0]), random_state=seed
+        src_val_test, train_size=src_ratios[1]/(1-src_ratios[0]), random_state=seed
     )
-    tgt_train, tgt_test = train_test_split(
-        sample_ids_target, train_size=tgt_ratios[0], random_state=seed
-    )
-    splits = {
-        "medium": {
-            "src": {"train": src_train, "val": src_val, "test": src_test},
-            "tgt": {"train": tgt_train, "val": [], "test": tgt_test},
+    
+    # Track all used sample IDs to detect overlap
+    all_target_samples = {}
+    
+    # Create target splits for each difficulty
+    for difficulty, target_range in target_ranges.items():
+        if exclusive_upper:
+            filtered_target_df = original_cond_df[
+                (original_cond_df[split_col] >= target_range[0]) &
+                (original_cond_df[split_col] < target_range[1])
+            ]
+        else:
+            filtered_target_df = original_cond_df[
+                (original_cond_df[split_col] >= target_range[0]) &
+                (original_cond_df[split_col] <= target_range[1])
+            ]
+        
+        sample_ids_target = list(filtered_target_df["sample_id"])
+        all_target_samples[difficulty] = set(sample_ids_target)
+        
+        tgt_train, tgt_test = train_test_split(
+            sample_ids_target, train_size=tgt_ratios[0], random_state=seed
+        )
+        
+        splits[difficulty] = {
+            "src": {
+                "train": src_train,
+                "val": src_val,
+                "test": src_test
+            },
+            "tgt": {
+                "train": tgt_train,
+                "val": [],
+                "test": tgt_test
+            }
         }
-    }
+
     return splits
+
 
 
 def main():
     args = parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    # get arguments
+    data_path = args.data_path
+    config_file = args.config_file
+    output_name = args.output_name
 
-    # build conditioning dataframe
-    cond_df = get_conditioning_dataframe(dataset_path=args.data_path)
+    # load metadata and splitting config
+    metadata_df = pd.read_csv(osp.join(data_path, "metadata.csv"))
+    with open(config_file, "r") as f:
+        config = json.load(f)
 
-    # load filters
-    src_filters = json.loads(args.src_filters)
-    if not src_filters:
-        print("\nNo --src-filters provided. Available conditions and ranges:")
-        summary = summarize_conditions(cond_df)
-        print(json.dumps(summary, indent=2))
-        raise SystemExit(
-            "\nPlease re-run with --src-filters specifying ranges, e.g.\n"
-            "  --src-filters '{\"thickness\":[50,150], \"temp_core\":[900,1100]}'\n"
-        )
-
-    # compute splits
-    splits = split_domains(
-        cond_df=cond_df,
-        src_filters=src_filters,
-        src_ratios=tuple(args.src_ratios),
-        tgt_ratios=tuple(args.tgt_ratios),
-        seed=args.seed,
-    )
-
+    splits = split_domains_multi_difficulty(
+        cond_df=metadata_df,
+        src_range=config["source_range"],
+        target_ranges=config["target_ranges"],
+        split_col=config["split_param"],
+        src_ratios=tuple(config["source_ratios"]),
+        tgt_ratios=tuple(config["target_ratios"]),
+        seed=config["seed"])
+    
+    # print some split statistics
+    for difficulty, split in splits.items():
+        print(f"Difficulty: {difficulty}")
+        print(f"  Source - Train: {len(split['src']['train'])}, Val: {len(split['src']['val'])}, Test: {len(split['src']['test'])}")
+        print(f"  Target - Train: {len(split['tgt']['train'])}, Test: {len(split['tgt']['test'])}")
+    
     # save splits
-    out_path = osp.join(args.output_dir, "splits.json")
-    with open(out_path, "w") as f:
-        json.dump(splits, f, indent=2)
-    print(f"Saved splits to: {out_path}")
-
-    # print a quick summary
-    src_counts = {k: len(v) for k, v in splits["medium"]["src"].items()}
-    tgt_counts = {k: len(v) for k, v in splits["medium"]["tgt"].items()}
-    print("\nCounts:")
-    print("  Source:", src_counts)
-    print("  Target:", tgt_counts)
+    with open(osp.join(data_path, output_name), "w") as f:
+        json.dump(splits, f, indent=4)
 
 
 if __name__ == "__main__":

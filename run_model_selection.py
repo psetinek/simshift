@@ -10,14 +10,21 @@ from tqdm import tqdm
 import wandb
 from simshift.data import get_test_data
 from simshift.model_selection.model_selector import ModelSelector
-from simshift.model_selection.utils import compute_rmse, get_predictions
+from simshift.model_selection.utils import (
+    compute_rmse,
+    get_predictions,
+)
 from simshift.utils import load_model, set_seed
 
 from simshift.model_selection.utils import (
     rolling_evaluate_middle_line,
     forming_evaluate_middle_line,
     motor_evaluate_chord,
+    motor_constitutive_error,
     heatsink_evaluate_middle_line,
+    mises_stress_consistency,
+    yield_metrics,
+    fin_BC_consistency,
 )
 
 from simshift.data.rolling_data import RollingDataset
@@ -64,6 +71,8 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    print("Starting model selection...")
+
     args = parse_args()
 
     ENTITY = args.entity
@@ -84,6 +93,7 @@ if __name__ == "__main__":
 
     api = wandb.Api()
     all_runs = api.runs(f"{ENTITY}/{PROJECT}", filters=EXP_ID)
+    print(f"Found {len(all_runs)} runs for model selection.")
 
     # load datasets once
     checkpoint_path = osp.join(
@@ -91,7 +101,10 @@ if __name__ == "__main__":
         all_runs[0].name,
         "best.pth",
     )
-    ckp_dict = load_model(checkpoint_path, load_opt=False, load_trainset=True)
+
+    ckp_dict = load_model(
+        checkpoint_path, load_opt=False, load_trainset=True
+    )
     trainset_source = ckp_dict["trainset_source"]
     valset_source = ckp_dict["valset_source"]
     trainset_target = ckp_dict["trainset_target"]
@@ -100,19 +113,26 @@ if __name__ == "__main__":
     if PROJECT == "heatsink":
         testset_source.n_subsampled_nodes = None
         testset_target.n_subsampled_nodes = None
+        testset_source.subsample(500_000)
+        testset_target.subsample(500_000)
 
     # get unqiue models, da_algorithms and seeds
     unique_models = sorted({run.config["model"]["name"] for run in all_runs})
+
     unique_da_algorithms = sorted(
         {run.config["da_algorithm"]["name"] for run in all_runs}
     )
+
     unique_seeds = sorted({run.config["seed"] for run in all_runs})
 
+    print(unique_models)
+    print(unique_da_algorithms)
     results = []
     for model_type_name in tqdm(unique_models, desc="Models"):
         for da_algorithm_type_name in tqdm(
             unique_da_algorithms, desc="DA Algorithms", leave=False
         ):
+            # break
             for seed in tqdm(unique_seeds, desc="Seeds", leave=False):
                 # get the runs for the different hyperparams lambda (exclude lambda = 0)
                 filters = EXP_ID.copy()
@@ -142,7 +162,9 @@ if __name__ == "__main__":
                         "best.pth",
                     )
                     ckp_dict = load_model(
-                        checkpoint_path, load_opt=False, valset=valset_source
+                        checkpoint_path,
+                        load_opt=False,
+                        valset=valset_source,
                     )
                     models.append(ckp_dict["model"])
                     cfgs.append(ckp_dict["cfg"])
@@ -168,6 +190,7 @@ if __name__ == "__main__":
                     rmse_target_deformation,
                     custom_error_source,
                     custom_error_target,
+                    physics_metrics,
                 ) = model_selector.compute_test_performance()
 
                 # record results
@@ -198,6 +221,9 @@ if __name__ == "__main__":
                     # add custom evaluation metrics
                     result["test_loss_source_custom"] = custom_error_source[i].item()
                     result["test_loss_target_custom"] = custom_error_target[i].item()
+                    # add physics metrics
+                    for key, value in physics_metrics.items():
+                        result[key] = value[i].item()
                     results.append(result)
 
         # for every model type, include results for an unregularized run
@@ -209,7 +235,7 @@ if __name__ == "__main__":
                     "config.seed": seed,
                     "config.model.name": model_type_name,
                     "config.da_algorithm.name": "deep_coral",  # depending on where you
-                    # run without da_loss
+                    # ran the run without da_loss
                     "config.da_algorithm.da_loss_weight": 0,
                 }
             )
@@ -228,7 +254,11 @@ if __name__ == "__main__":
                 runs[0].name,
                 "best.pth",
             )
-            ckp_dict = load_model(checkpoint_path, load_opt=False, valset=valset_source)
+            ckp_dict = load_model(
+                checkpoint_path,
+                load_opt=False,
+                valset=valset_source,
+            )
             model = ckp_dict["model"]
             cfg = ckp_dict["cfg"]
 
@@ -348,17 +378,19 @@ if __name__ == "__main__":
             # coordinates loss
             # denormalize predictions
             # ensemble_predictions: [n_algorithms, total_nodes, n_fields]
-            cond_source_denormalized, predictions_source_denormalized = (
-                testset_source.denormalize(
-                    source_sample.cond,
-                    source_preds[..., : -source_sample.y_mesh_coords.shape[-1]],
-                )
+            (
+                cond_source_denormalized,
+                predictions_source_denormalized,
+            ) = testset_source.denormalize(
+                source_sample.cond,
+                source_preds[..., : -source_sample.y_mesh_coords.shape[-1]],
             )  # slice to remove coordinates
-            cond_target_denormalized, predictions_target_denormalized = (
-                testset_target.denormalize(
-                    target_sample.cond,
-                    target_preds[..., : -target_sample.y_mesh_coords.shape[-1]],
-                )
+            (
+                cond_target_denormalized,
+                predictions_target_denormalized,
+            ) = testset_target.denormalize(
+                target_sample.cond,
+                target_preds[..., : -target_sample.y_mesh_coords.shape[-1]],
             )
 
             # denormalize ground truth
@@ -457,6 +489,7 @@ if __name__ == "__main__":
             rmse_tgt_deformation = rmse_tgt_coords_per_graph.mean()
 
             # Dataset specific evaluation loss
+            physics_metrics = {}
             if isinstance(testset_source, RollingDataset):
                 custom_error_source = rolling_evaluate_middle_line(
                     preds=predictions_source_denormalized.unsqueeze(0),
@@ -464,7 +497,7 @@ if __name__ == "__main__":
                     coords=source_gt_coords_denormalized.unsqueeze(0),
                     batch_indices=source_batch_index,
                     x_rel_tol=0.001,
-                    channel=testset_source.channels["nodes_PEEQ"],
+                    channel=testset_source.channels["equivalent_plastic_strain"],
                     eps=0.001,
                 )
                 custom_error_target = rolling_evaluate_middle_line(
@@ -473,9 +506,35 @@ if __name__ == "__main__":
                     coords=target_gt_coords_denormalized.unsqueeze(0),
                     batch_indices=target_batch_index,
                     x_rel_tol=0.001,
-                    channel=testset_target.channels["nodes_PEEQ"],
+                    channel=testset_target.channels["equivalent_plastic_strain"],
                     eps=0.001,
                 )
+                vm_consistency_error_source = mises_stress_consistency(
+                    stresses_pred=predictions_source_denormalized[
+                        :, testset_source.channels["cauchy_stress"]
+                    ].unsqueeze(0),
+                    mises_pred=predictions_source_denormalized[
+                        :, testset_source.channels["mises_stress"]
+                    ].unsqueeze(0),
+                    batch_indices=source_batch_index,
+                    eps=10,
+                )
+                physics_metrics[
+                    "test_loss_vmconsistency_source"
+                ] = vm_consistency_error_source
+                vm_consistency_error_target = mises_stress_consistency(
+                    stresses_pred=predictions_target_denormalized[
+                        :, testset_target.channels["cauchy_stress"]
+                    ].unsqueeze(0),
+                    mises_pred=predictions_target_denormalized[
+                        :, testset_target.channels["mises_stress"]
+                    ].unsqueeze(0),
+                    batch_indices=target_batch_index,
+                    eps=10,
+                )
+                physics_metrics[
+                    "test_loss_vmconsistency_target"
+                ] = vm_consistency_error_target
 
             elif isinstance(testset_source, FormingDataset):
                 custom_error_source = forming_evaluate_middle_line(
@@ -498,6 +557,60 @@ if __name__ == "__main__":
                     dataset=testset_target,
                     eps=1,
                 )
+                vm_consistency_error_source = mises_stress_consistency(
+                    stresses_pred=predictions_source_denormalized[
+                        :, testset_source.channels["s"]
+                    ].unsqueeze(0),
+                    mises_pred=predictions_source_denormalized[
+                        :, testset_source.channels["mises"]
+                    ].unsqueeze(0),
+                    batch_indices=source_batch_index,
+                    eps=10,
+                )
+                physics_metrics[
+                    "test_loss_vmconsistency_source"
+                ] = vm_consistency_error_source
+                vm_consistency_error_target = mises_stress_consistency(
+                    stresses_pred=predictions_target_denormalized[
+                        :, testset_target.channels["s"]
+                    ].unsqueeze(0),
+                    mises_pred=predictions_target_denormalized[
+                        :, testset_target.channels["mises"]
+                    ].unsqueeze(0),
+                    batch_indices=target_batch_index,
+                    eps=10,
+                )
+                physics_metrics[
+                    "test_loss_vmconsistency_target"
+                ] = vm_consistency_error_target
+                elastic_frac_source, plastic_res_source = yield_metrics(
+                    vm=predictions_source_denormalized[
+                        :, testset_source.channels["mises"]
+                    ].unsqueeze(0),
+                    peeq=predictions_source_denormalized[
+                        :, testset_source.channels["peeq"]
+                    ].unsqueeze(0),
+                    sigma_y0=410.1,
+                    H=2268,
+                    batch_indices=source_batch_index,
+                    peeq_tol=1e-6,
+                )
+                physics_metrics["test_loss_elasticfrac_source"] = elastic_frac_source
+                physics_metrics["test_loss_plasticres_source"] = plastic_res_source
+                elastic_frac_target, plastic_res_target = yield_metrics(
+                    vm=predictions_target_denormalized[
+                        :, testset_target.channels["mises"]
+                    ].unsqueeze(0),
+                    peeq=predictions_target_denormalized[
+                        :, testset_target.channels["peeq"]
+                    ].unsqueeze(0),
+                    sigma_y0=410.1,
+                    H=2268,
+                    batch_indices=target_batch_index,
+                    peeq_tol=1e-6,
+                )
+                physics_metrics["test_loss_elasticfrac_target"] = elastic_frac_target
+                physics_metrics["test_loss_plasticres_target"] = plastic_res_target
 
             elif isinstance(testset_source, MotorDataset):
                 custom_error_source = motor_evaluate_chord(
@@ -507,7 +620,7 @@ if __name__ == "__main__":
                     conds=cond_source_denormalized,
                     batch_indices=source_batch_index,
                     x_rel_tol=0.05,
-                    channel=testset_source.channels["stress_mises"],
+                    channel=0,  # xx component of cauchy stress
                     dataset=testset_source,
                     eps=1,
                 )
@@ -518,10 +631,39 @@ if __name__ == "__main__":
                     conds=cond_target_denormalized,
                     batch_indices=target_batch_index,
                     x_rel_tol=0.05,
-                    channel=testset_source.channels["stress_mises"],
+                    channel=0,  # xx component of cauchy stress
                     dataset=testset_target,
                     eps=1,
                 )
+
+                constitutive_error_source = motor_constitutive_error(
+                    logarithmic_strain=predictions_source_denormalized.unsqueeze(0)[
+                        :, :, testset_source.channels["logarithmic_strain"]
+                    ],
+                    cauchy_stress=predictions_source_denormalized.unsqueeze(0)[
+                        :, :, testset_source.channels["cauchy_stress"]
+                    ],
+                    mesh_material=source_sample.mesh_material,
+                    batch_indices=source_batch_index,
+                    eps=1e-6,
+                )
+                constitutive_error_target = motor_constitutive_error(
+                    logarithmic_strain=predictions_target_denormalized.unsqueeze(0)[
+                        :, :, testset_target.channels["logarithmic_strain"]
+                    ],
+                    cauchy_stress=predictions_target_denormalized.unsqueeze(0)[
+                        :, :, testset_target.channels["cauchy_stress"]
+                    ],
+                    mesh_material=target_sample.mesh_material,
+                    batch_indices=target_batch_index,
+                    eps=1e-6,
+                )
+                physics_metrics[
+                    "test_loss_constitutive_source"
+                ] = constitutive_error_source
+                physics_metrics[
+                    "test_loss_constitutive_target"
+                ] = constitutive_error_target
 
             elif isinstance(testset_source, HeatsinkDataset):
                 custom_error_source = heatsink_evaluate_middle_line(
@@ -546,7 +688,24 @@ if __name__ == "__main__":
                     channel=testset_target.channels["T"],
                     eps=1e-2,
                 )
-
+                temp_err_source, vel_err_source = fin_BC_consistency(
+                    gt=source_gt_denormalized.unsqueeze(0),
+                    pred=predictions_source_denormalized.unsqueeze(0),
+                    cond=cond_source_denormalized,
+                    dataset=testset_source,
+                    batch_indices=source_batch_index,
+                )
+                physics_metrics["test_loss_bcviolt_source"] = temp_err_source
+                physics_metrics["test_loss_bcviolv_source"] = vel_err_source
+                temp_err_target, vel_err_target = fin_BC_consistency(
+                    gt=target_gt_denormalized.unsqueeze(0),
+                    pred=predictions_target_denormalized.unsqueeze(0),
+                    cond=cond_target_denormalized,
+                    dataset=testset_target,
+                    batch_indices=target_batch_index,
+                )
+                physics_metrics["test_loss_bcviolt_target"] = temp_err_target
+                physics_metrics["test_loss_bcviolv_target"] = vel_err_target
             else:
                 raise ValueError("Wrong dataset?!")
 
@@ -573,6 +732,9 @@ if __name__ == "__main__":
             # add custom losses
             result["test_loss_source_custom"] = custom_error_source[0].item()
             result["test_loss_target_custom"] = custom_error_target[0].item()
+            # physics metrics
+            for key, value in physics_metrics.items():
+                result[key] = value.item()
             results.append(result)
             # clear gpu memory
             torch.cuda.empty_cache()
@@ -580,5 +742,6 @@ if __name__ == "__main__":
     # save results as df and csv
     os.makedirs(args.output_dir, exist_ok=True)
     df_results = pd.DataFrame(results)
-    df_results.to_pickle(osp.join(args.output_dir, f"results_{PROJECT}.pkl"))
-    df_results.to_csv(osp.join(args.output_dir, f"results_{PROJECT}.csv"), index=False)
+    df_results.to_csv(
+        osp.join(args.output_dir, f"results_{PROJECT}.csv"), index=False
+    )

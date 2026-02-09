@@ -1,6 +1,7 @@
 name: heatsink
 path: datasets/heatsink  # if data is not available at the given path, it will be downloaded
-normalization: zscore
+splits_path: null # default splits path assumes a splits.json in the path folder above
+metadata_path: null  #normalization: zscore
 difficulty: medium
 out_deformation: False
 space: 3

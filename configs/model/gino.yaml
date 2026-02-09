@@ -1,6 +1,7 @@
-name: PointNetGeometry
+name: ConditionedGINO
 hparams:
   latent_channels: 8
+  num_layers: 4
   dropout_prob: 0
-  pointnet_base: 16
   conditioning_bn: false
+  conditioning_ln: true
