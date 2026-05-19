@@ -155,6 +155,7 @@ if __name__ == "__main__":
                 # load models
                 models = []  # {model: config]}
                 cfgs = []
+                run_names = []
                 for run in runs:
                     checkpoint_path = osp.join(
                         MODEL_CKP_DIR,
@@ -168,6 +169,7 @@ if __name__ == "__main__":
                     )
                     models.append(ckp_dict["model"])
                     cfgs.append(ckp_dict["cfg"])
+                    run_names.append(run.name)
                 # model selection (aggregation and test loss)
                 model_selector = ModelSelector(
                     algorithm_names=MODEL_SELECTION_ALGS,
@@ -195,10 +197,16 @@ if __name__ == "__main__":
 
                 # record results
                 for i, algo_name in enumerate(MODEL_SELECTION_ALGS):
+                    selected_model_idx = int(
+                        torch.argmax(model_selector.model_weights[i]).item()
+                    )
+                    selected_cfg = cfgs[selected_model_idx]
                     result = {
                         "model_name": model_type_name,
                         "da_algorithm_name": da_algorithm_type_name,
                         "model_selection_algorithm_name": algo_name,
+                        "run_name": run_names[selected_model_idx],
+                        "lambda": selected_cfg.da_algorithm.da_loss_weight,
                         "seed": seed,
                         "test_loss_source": test_loss_source_per_alg[i].item(),
                         "test_loss_target": test_loss_target_per_alg[i].item(),
@@ -714,6 +722,8 @@ if __name__ == "__main__":
                 "model_name": model_type_name,
                 "da_algorithm_name": "-",
                 "model_selection_algorithm_name": "-",
+                "run_name": runs[0].name,
+                "lambda": cfg.da_algorithm.da_loss_weight,
                 "seed": seed,
                 "test_loss_source": source_loss.item(),
                 "test_loss_target": target_loss.item(),
