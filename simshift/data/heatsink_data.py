@@ -2,13 +2,19 @@ from dataclasses import dataclass
 from typing import Dict, Literal, Optional
 import os.path as osp
 import json
+import time
 from tqdm import tqdm
 import h5py
 
 import numpy as np
 import torch
 
-from simshift.data.base_data import BaseDataset, BaseSample
+from simshift.data.base_data import (
+    H5_READ_ATTEMPTS,
+    H5_RETRY_WAIT_SECONDS,
+    BaseDataset,
+    BaseSample,
+)
 
 
 @dataclass(kw_only=True)
@@ -70,8 +76,6 @@ class HeatsinkDataset(BaseDataset):
             domain = "src"
         if self.domain == "target":
             domain = "tgt"
-            if self.split == "val":
-                split = "test"
         sample_ids = splits_metadata[self.difficulty][domain][split]
         # sample_ids = sample_ids[:20]
         data = {}
@@ -80,67 +84,85 @@ class HeatsinkDataset(BaseDataset):
             desc=f"Loading data (split={split}, domain={domain})",
             total=len(sample_ids),
         ):
-            with h5py.File(osp.join(self.path, str(sample_id) + ".h5"), "r") as h5f:
-                # load mesh info and build nearest neighbor graph
-                mesh_coords = torch.from_numpy(h5f["mesh/node_coords"][:, :]).to(
-                    dtype=self.dtype
-                )
-                mesh_element_connectivity = torch.from_numpy(
-                    h5f["mesh/element_connectivity"][:]
-                ).to(torch.long)
-                mesh_element_types = torch.from_numpy(h5f["mesh/element_types"][:]).to(
-                    torch.uint8
-                )
-                mesh_coords = mesh_coords - mesh_coords.min(dim=0, keepdim=True).values
-                mesh_coords_initial = mesh_coords
-                mesh_coords_final = mesh_coords.clone().detach()
+            file_path = osp.join(self.path, str(sample_id) + ".h5")
+            for attempt in range(1, H5_READ_ATTEMPTS + 1):
+                try:
+                    with h5py.File(file_path, "r") as h5f:
+                        # load mesh info and build nearest neighbor graph
+                        mesh_coords = torch.from_numpy(
+                            h5f["mesh/node_coords"][:, :]
+                        ).to(dtype=self.dtype)
+                        mesh_element_connectivity = torch.from_numpy(
+                            h5f["mesh/element_connectivity"][:]
+                        ).to(torch.long)
+                        mesh_element_types = torch.from_numpy(
+                            h5f["mesh/element_types"][:]
+                        ).to(torch.uint8)
+                        mesh_coords = (
+                            mesh_coords - mesh_coords.min(dim=0, keepdim=True).values
+                        )
+                        mesh_coords_initial = mesh_coords
+                        mesh_coords_final = mesh_coords.clone().detach()
 
-                mesh_edges = torch.zeros([1, 1], dtype=torch.int)
+                        mesh_edges = torch.zeros([1, 1], dtype=torch.int)
 
-                # load fields
-                fields, channels = [], {}
-                cnt = 0
-                for field_name in self.field_names:
-                    _field = torch.from_numpy(h5f[f"node_fields/{field_name}"][:]).to(
-                        dtype=self.dtype
+                        # load fields
+                        fields, channels = [], {}
+                        cnt = 0
+                        for field_name in self.field_names:
+                            _field = torch.from_numpy(
+                                h5f[f"node_fields/{field_name}"][:]
+                            ).to(dtype=self.dtype)
+                            if _field.ndim == 1:
+                                _field = _field[:, None]
+                            fields.append(_field)
+                            channels[field_name] = slice(cnt, cnt + _field.shape[-1])
+                            cnt += _field.shape[-1]
+                        fields = torch.cat(fields, dim=-1)
+                    break
+                except FileNotFoundError:
+                    raise
+                except OSError as e:
+                    if attempt == H5_READ_ATTEMPTS:
+                        raise
+                    wait = H5_RETRY_WAIT_SECONDS * 2 ** (attempt - 1)
+                    tqdm.write(
+                        f"I/O error reading {file_path} "
+                        f"(attempt {attempt}/{H5_READ_ATTEMPTS}): {e}; "
+                        f"retrying in {wait:.0f}s"
                     )
-                    if _field.ndim == 1:
-                        _field = _field[:, None]
-                    fields.append(_field)
-                    channels[field_name] = slice(cnt, cnt + _field.shape[-1])
-                    cnt += _field.shape[-1]
-                fields = torch.cat(fields, dim=-1)
+                    time.sleep(wait)
 
-                # build cond vector
-                row = self.metadata_df[self.metadata_df["sample_id"] == sample_id]
-                # row = row.drop(columns="sample_id")
-                row = row.drop(
-                    columns=[
-                        "sample_id",
-                        "envTemp",
-                        "flowVelocity",
-                        "height1",
-                        "length",
-                        "pressure",
-                        "turbulentKE",
-                        "turbulentOmega",
-                        "width",
-                    ]
-                )
-                cond_np = row.iloc[0].to_numpy(dtype=np.float32)
-                cond = torch.from_numpy(cond_np).to(self.dtype)
+            # build cond vector
+            row = self.metadata_df[self.metadata_df["sample_id"] == sample_id]
+            # row = row.drop(columns="sample_id")
+            row = row.drop(
+                columns=[
+                    "sample_id",
+                    "envTemp",
+                    "flowVelocity",
+                    "height1",
+                    "length",
+                    "pressure",
+                    "turbulentKE",
+                    "turbulentOmega",
+                    "width",
+                ]
+            )
+            cond_np = row.iloc[0].to_numpy(dtype=np.float32)
+            cond = torch.from_numpy(cond_np).to(self.dtype)
 
-                # build sample
-                sample = {
-                    "cond": cond,
-                    "y": fields,
-                    "mesh_coords": mesh_coords_initial,
-                    "y_mesh_coords": mesh_coords_final,
-                    "edge_index": mesh_edges,
-                    "mesh_element_connectivity": mesh_element_connectivity,
-                    "mesh_element_types": mesh_element_types,
-                }
-                data[idx] = sample
+            # build sample
+            sample = {
+                "cond": cond,
+                "y": fields,
+                "mesh_coords": mesh_coords_initial,
+                "y_mesh_coords": mesh_coords_final,
+                "edge_index": mesh_edges,
+                "mesh_element_connectivity": mesh_element_connectivity,
+                "mesh_element_types": mesh_element_types,
+            }
+            data[idx] = sample
 
         cond_names = row.columns.to_list()
         conds = {name: i for i, name in enumerate(cond_names)}
