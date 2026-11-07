@@ -63,8 +63,15 @@ class DeepCORALAcc(AccumulateDAAlgorithm):
         self.src_latent_buffer.clear()
         self.trgt_latent_buffer.clear()
 
-        coral_loss = self._coral_loss(all_src_latents, all_trgt_latents)
-        self.da_loss = self.da_loss_weight * coral_loss
+        if self.da_loss_weight != 0:
+            coral_loss = self._coral_loss(all_src_latents, all_trgt_latents)
+            self.da_loss = self.da_loss_weight * coral_loss
+        else:
+            # weight 0 (source-only): keep coral out of the loss graph, so a
+            # non-finite distance (e.g. fp16 overflow) cannot poison it as 0*inf
+            with torch.no_grad():
+                coral_loss = self._coral_loss(all_src_latents, all_trgt_latents)
+            self.da_loss = torch.zeros((), device=all_src_latents.device)
         self.loss_dict["da_loss"] = coral_loss.item() * self.logical_batch_size  # so it gets logged correctly in the train loss dict
 
     def _coral_loss(self, source_features, target_features):

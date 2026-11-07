@@ -16,3 +16,4 @@ docs/_build
 *.png
 build/
 _internal/
+multirun/

@@ -51,11 +51,15 @@ class DeepCORAL(DAAlgorithm):
         # mse_loss = self.mse_loss(src_pred, src_sample.y[supernode_index])
 
         # coral loss
-        coral_loss = self._coral_loss(src_latents, trgt_latents)
-
-        # set total loss
-        self.loss = pos_loss + mse_loss + self.da_loss_weight * coral_loss
-        # self.loss = pos_loss + mse_loss
+        if self.da_loss_weight != 0:
+            coral_loss = self._coral_loss(src_latents, trgt_latents)
+            self.loss = pos_loss + mse_loss + self.da_loss_weight * coral_loss
+        else:
+            # weight 0 (source-only): keep coral out of the loss graph, so a
+            # non-finite distance (e.g. fp16 overflow) cannot poison it as 0*inf
+            with torch.no_grad():
+                coral_loss = self._coral_loss(src_latents, trgt_latents)
+            self.loss = pos_loss + mse_loss
 
         # loss dictionary
         self.loss_dict["mse_loss"] = mse_loss.item()
