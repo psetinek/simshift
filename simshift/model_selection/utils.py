@@ -78,7 +78,7 @@ def get_mse_loss(
                 device
             )
             loss_per_sample.scatter_reduce_(
-                dim=0, index=sample.batch_index, src=loss, reduce="mean"
+                dim=0, index=sample.batch_index, src=loss, reduce="mean", include_self=False
             )
             losses.append(loss_per_sample.to("cpu"))
 
@@ -92,14 +92,14 @@ def _rmse(pred_fields, gt_fields, pred_pos, gt_pos, batch_index, device):
     )
     sample_batch_index_expanded = batch_index.unsqueeze(-1).expand(_mse_fields.shape)
     _mse_per_graph.scatter_reduce_(
-        dim=0, index=sample_batch_index_expanded, src=_mse_fields, reduce="mean"
+        dim=0, index=sample_batch_index_expanded, src=_mse_fields, reduce="mean", include_self=False
     )
     _rmse_per_field = _mse_per_graph.sqrt()  # [n_batch_samples, n_fields]
 
     _l2_pos = ((gt_pos - pred_pos) ** 2).sum(dim=-1).sqrt()
     _mean_l2_pos_per_graph = torch.zeros([batch_index.max().item() + 1], device=device)
     _mean_l2_pos_per_graph.scatter_reduce_(
-        dim=0, index=batch_index, src=_l2_pos, reduce="mean"
+        dim=0, index=batch_index, src=_l2_pos, reduce="mean", include_self=False
     )
 
     return _rmse_per_field, _mean_l2_pos_per_graph
@@ -295,9 +295,11 @@ def rolling_evaluate_middle_line(
         f_pred = pred[:, mask, :]
         f_gt = gt[:, mask, :]
 
-        # compute average error
-        avg_ae = torch.abs((f_pred - f_gt) / (f_gt + eps)).mean(dim=(1, 2))
-        errors.append(avg_ae)
+        # per-sample MEAN ABSOLUTE ERROR along the line (physical units),
+        # aggregated as the mean over samples. Division-free by design: rare
+        # geometries with a ~zero-reference line made every relative variant
+        # outlier-dominated. (eps unused)
+        errors.append((f_pred - f_gt).abs().mean(dim=(1, 2)))
 
     return torch.stack(errors).mean(dim=0)
 
@@ -325,9 +327,11 @@ def forming_evaluate_middle_line(
         f_pred = pred[:, mask, :]
         f_gt = gt[:, mask, :]
 
-        # compute average error
-        avg_ae = torch.abs((f_pred - f_gt) / (f_gt + eps)).mean(dim=(1, 2))
-        errors.append(avg_ae)
+        # per-sample MEAN ABSOLUTE ERROR along the line (physical units),
+        # aggregated as the mean over samples. Division-free by design: rare
+        # geometries with a ~zero-reference line made every relative variant
+        # outlier-dominated. (eps unused)
+        errors.append((f_pred - f_gt).abs().mean(dim=(1, 2)))
 
     return torch.stack(errors).mean(dim=0)
 
@@ -370,7 +374,7 @@ def motor_evaluate_chord(
         f_gt_sorted = f_gt_line[:, indices, :]
 
         # start from right, stop at first decrease
-        cut_idx = len(f_gt_sorted)  # default: keep all
+        cut_idx = 0  # default: keep all (len(f_gt_sorted) was the leading dim == 1)
         for idx in range(len(f_gt_sorted[0, :, 0]) - 1, 0, -1):
             if (
                 f_gt_sorted[0, idx - 1, 0] < 0.7 * f_gt_sorted[0, idx, 0]
@@ -384,10 +388,11 @@ def motor_evaluate_chord(
         f_pred_sorted = f_pred_sorted[:, cut_idx:, :]
         f_gt_sorted = f_gt_sorted[:, cut_idx:, :]
 
-        avg_ae = torch.abs((f_pred_sorted - f_gt_sorted) / (f_gt_sorted + eps)).mean(
-            dim=(1, 2)
-        )
-        errors.append(avg_ae)
+        # per-sample MEAN ABSOLUTE ERROR along the line (physical units),
+        # aggregated as the mean over samples. Division-free by design: rare
+        # geometries with a ~zero-reference line made every relative variant
+        # outlier-dominated. (eps unused)
+        errors.append((f_pred_sorted - f_gt_sorted).abs().mean(dim=(1, 2)))
 
     return torch.stack(errors).mean(dim=0)
 
@@ -522,9 +527,11 @@ def heatsink_evaluate_middle_line(
         f_pred = pred[:, mask, :]
         f_gt = gt[:, mask, :]
 
-        # Compute average error
-        avg_ae = torch.abs((f_pred - f_gt) / (f_gt + eps)).mean(dim=(1, 2))
-        errors.append(avg_ae)
+        # per-sample MEAN ABSOLUTE ERROR along the line (physical units),
+        # aggregated as the mean over samples. Division-free by design: rare
+        # geometries with a ~zero-reference line made every relative variant
+        # outlier-dominated. (eps unused)
+        errors.append((f_pred - f_gt).abs().mean(dim=(1, 2)))
 
     return torch.stack(errors).mean(dim=0)
 
@@ -635,6 +642,12 @@ def yield_metrics(
     Returns:
         elastic_frac_over_0_mean : shape [M]
         plastic_residual_mean_rel_mean : shape [M]
+            equality residual |vm - (sigma_y0 + H*peeq)| / sigma_y0
+        plastic_residual_onesided_mean : shape [M]
+            one-sided yield-surface violation max(0, vm - (sigma_y0 + H*peeq))
+            / sigma_y0. peeq is a cumulative history variable, so elastically
+            unloaded nodes legitimately sit BELOW the surface; only overshoot
+            violates the Kuhn-Tucker conditions (the GT fields score ~0 here).
         (each averaged over all samples in the batch)
     """
 
@@ -647,6 +660,7 @@ def yield_metrics(
 
     elastic_frac_over_0_list = []
     plastic_residual_mean_rel_list = []
+    plastic_residual_onesided_list = []
 
     for i in range(num_samples):
         sample_mask = batch_indices == i  # [N_total]
@@ -687,6 +701,7 @@ def yield_metrics(
         sigma_yield = sigma_y0 + H * peeq_masked  # [M, N_i]
         resid = vm_masked - sigma_yield  # [M, N_i]
         rel_resid = resid.abs() / sigma_y0  # [M, N_i]
+        rel_resid_onesided = resid.clamp(min=0) / sigma_y0  # [M, N_i]
 
         # Masked average over plastic nodes
         sum_rel_resid = (rel_resid * plastic_mask).sum(dim=1)  # [M]
@@ -695,13 +710,21 @@ def yield_metrics(
             sum_rel_resid / plastic_counts.clamp(min=1).float(),
             torch.zeros_like(plastic_counts, dtype=torch.float),
         )  # [M]
+        sum_rel_resid_os = (rel_resid_onesided * plastic_mask).sum(dim=1)  # [M]
+        plastic_residual_onesided = torch.where(
+            plastic_counts > 0,
+            sum_rel_resid_os / plastic_counts.clamp(min=1).float(),
+            torch.zeros_like(plastic_counts, dtype=torch.float),
+        )  # [M]
 
         plastic_residual_mean_rel_list.append(plastic_residual_mean_rel)
+        plastic_residual_onesided_list.append(plastic_residual_onesided)
 
     if len(elastic_frac_over_0_list) == 0:
         # no samples / nodes – return zeros
         M = vm.shape[0]
         return (
+            torch.zeros(M, device=vm.device),
             torch.zeros(M, device=vm.device),
             torch.zeros(M, device=vm.device),
         )
@@ -711,8 +734,15 @@ def yield_metrics(
     plastic_residual_mean_rel_mean = torch.stack(
         plastic_residual_mean_rel_list, dim=0
     ).mean(dim=0)
+    plastic_residual_onesided_mean = torch.stack(
+        plastic_residual_onesided_list, dim=0
+    ).mean(dim=0)
 
-    return elastic_frac_over_0_mean, plastic_residual_mean_rel_mean
+    return (
+        elastic_frac_over_0_mean,
+        plastic_residual_mean_rel_mean,
+        plastic_residual_onesided_mean,
+    )
 
 
 def fin_BC_consistency(gt, pred, cond, dataset, batch_indices, temp_tol=1e-6):

@@ -35,7 +35,7 @@ def evaluate_model(model: nn.Module, dataloader: DataLoader, device: torch.devic
                 sample.batch_index.unsqueeze(-1).expand(mse.shape).to("cpu")
             )
             loss_per_sample.scatter_reduce_(
-                dim=0, index=batch_index_expanded, src=mse.to("cpu"), reduce="mean"
+                dim=0, index=batch_index_expanded, src=mse.to("cpu"), reduce="mean", include_self=False
             )
             loss = loss_per_sample.sqrt().mean(dim=1)
             losses.append(loss.to("cpu"))

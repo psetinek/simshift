@@ -325,7 +325,7 @@ if __name__ == "__main__":
                 source_loss.shape
             )
             source_loss_per_sample.scatter_reduce_(
-                dim=0, index=source_batch_index_expanded, src=source_loss, reduce="mean"
+                dim=0, index=source_batch_index_expanded, src=source_loss, reduce="mean", include_self=False
             )
             source_loss = source_loss_per_sample.sqrt().mean(dim=(0, 1))
 
@@ -351,7 +351,7 @@ if __name__ == "__main__":
                 target_loss.shape
             )
             target_loss_per_sample.scatter_reduce_(
-                dim=0, index=target_batch_index_expanded, src=target_loss, reduce="mean"
+                dim=0, index=target_batch_index_expanded, src=target_loss, reduce="mean", include_self=False
             )
             target_loss = target_loss_per_sample.sqrt().mean(dim=(0, 1))
 
@@ -424,7 +424,7 @@ if __name__ == "__main__":
                 dim=0,
                 index=source_batch_index_expanded,
                 src=mse_src_fields,
-                reduce="mean",
+                reduce="mean", include_self=False,
             )
             rmse_src_fields = mse_src_fields_per_sample.sqrt().mean(0)
 
@@ -441,7 +441,7 @@ if __name__ == "__main__":
                 dim=0,
                 index=target_batch_index_expanded,
                 src=mse_tgt_fields,
-                reduce="mean",
+                reduce="mean", include_self=False,
             )
             rmse_tgt_fields = mse_tgt_fields_per_sample.sqrt().mean(0)
 
@@ -475,7 +475,7 @@ if __name__ == "__main__":
             )
             rmse_src_coords_per_graph = torch.zeros([len(testset_source)], device="cpu")
             rmse_src_coords_per_graph.scatter_reduce_(
-                dim=0, index=source_batch_index, src=coord_rmse_src, reduce="mean"
+                dim=0, index=source_batch_index, src=coord_rmse_src, reduce="mean", include_self=False
             )
             rmse_src_deformation = rmse_src_coords_per_graph.mean()
 
@@ -492,7 +492,7 @@ if __name__ == "__main__":
             )
             rmse_tgt_coords_per_graph = torch.zeros([len(testset_target)], device="cpu")
             rmse_tgt_coords_per_graph.scatter_reduce_(
-                dim=0, index=target_batch_index, src=coord_rmse_tgt, reduce="mean"
+                dim=0, index=target_batch_index, src=coord_rmse_tgt, reduce="mean", include_self=False
             )
             rmse_tgt_deformation = rmse_tgt_coords_per_graph.mean()
 
@@ -591,34 +591,40 @@ if __name__ == "__main__":
                 physics_metrics[
                     "test_loss_vmconsistency_target"
                 ] = vm_consistency_error_target
-                elastic_frac_source, plastic_res_source = yield_metrics(
-                    vm=predictions_source_denormalized[
-                        :, testset_source.channels["mises"]
-                    ].unsqueeze(0),
-                    peeq=predictions_source_denormalized[
-                        :, testset_source.channels["peeq"]
-                    ].unsqueeze(0),
-                    sigma_y0=410.1,
-                    H=2268,
-                    batch_indices=source_batch_index,
-                    peeq_tol=1e-6,
+                elastic_frac_source, plastic_res_source, plastic_resos_source = (
+                    yield_metrics(
+                        vm=predictions_source_denormalized[
+                            :, testset_source.channels["mises"]
+                        ].unsqueeze(0),
+                        peeq=predictions_source_denormalized[
+                            :, testset_source.channels["peeq"]
+                        ].unsqueeze(0),
+                        sigma_y0=410.1,
+                        H=2268,
+                        batch_indices=source_batch_index,
+                        peeq_tol=1e-6,
+                    )
                 )
                 physics_metrics["test_loss_elasticfrac_source"] = elastic_frac_source
                 physics_metrics["test_loss_plasticres_source"] = plastic_res_source
-                elastic_frac_target, plastic_res_target = yield_metrics(
-                    vm=predictions_target_denormalized[
-                        :, testset_target.channels["mises"]
-                    ].unsqueeze(0),
-                    peeq=predictions_target_denormalized[
-                        :, testset_target.channels["peeq"]
-                    ].unsqueeze(0),
-                    sigma_y0=410.1,
-                    H=2268,
-                    batch_indices=target_batch_index,
-                    peeq_tol=1e-6,
+                physics_metrics["test_loss_plasticresos_source"] = plastic_resos_source
+                elastic_frac_target, plastic_res_target, plastic_resos_target = (
+                    yield_metrics(
+                        vm=predictions_target_denormalized[
+                            :, testset_target.channels["mises"]
+                        ].unsqueeze(0),
+                        peeq=predictions_target_denormalized[
+                            :, testset_target.channels["peeq"]
+                        ].unsqueeze(0),
+                        sigma_y0=410.1,
+                        H=2268,
+                        batch_indices=target_batch_index,
+                        peeq_tol=1e-6,
+                    )
                 )
                 physics_metrics["test_loss_elasticfrac_target"] = elastic_frac_target
                 physics_metrics["test_loss_plasticres_target"] = plastic_res_target
+                physics_metrics["test_loss_plasticresos_target"] = plastic_resos_target
 
             elif isinstance(testset_source, MotorDataset):
                 custom_error_source = motor_evaluate_chord(
