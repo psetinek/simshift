@@ -2,6 +2,7 @@
 
 import json
 import os.path as osp
+import time
 from dataclasses import asdict, dataclass
 from typing import Literal, Optional, Sequence
 
@@ -15,6 +16,10 @@ from tqdm import tqdm
 import pandas as pd
 
 from simshift.data.utils import download_data
+
+# transient I/O errors (e.g. NFS hiccups) during dataset loading are retried
+H5_READ_ATTEMPTS = 5
+H5_RETRY_WAIT_SECONDS = 10.0
 
 
 @dataclass(kw_only=True)
@@ -145,82 +150,98 @@ class BaseDataset(Dataset):
             desc=f"Loading data (split={split}, domain={domain})",
             total=len(sample_ids),
         ):
-            with h5py.File(
-                osp.join(self.path, str(sample_id) + ".h5"), "r", swmr=True
-            ) as h5f:
-                # load mesh info and build nearest neighbor graph
-                mesh_cords_initial = torch.tensor(
-                    h5f["mesh/node_coords"][0, :, :], dtype=self.dtype
-                )
-                mesh_coords_final = torch.tensor(
-                    h5f["mesh/node_coords"][-1, :, :], dtype=self.dtype
-                )
-                mesh_element_connectivity = torch.tensor(
-                    h5f["mesh/element_connectivity"][:, :], dtype=torch.long
-                )
-                mesh_cords_initial = (
-                    mesh_cords_initial
-                    - mesh_cords_initial.min(dim=0, keepdim=True).values
-                )
-                mesh_coords_final = (
-                    mesh_coords_final
-                    - mesh_coords_final.min(dim=0, keepdim=True).values
-                )
-
-                # build nearest neighbor graph
-                x0_np = mesh_cords_initial.cpu().numpy()
-                nbrs = NearestNeighbors(n_neighbors=5).fit(x0_np)
-                _, indices = nbrs.kneighbors(mesh_cords_initial)
-                # create source indices: [0,0,0,0,0, 1,1,1,1,1, ...]
-                source_nodes = np.repeat(np.arange(x0_np.shape[0]), indices.shape[1])
-                # flatten target indices: [n0_0, n0_1..., n1_0, n1_1...]
-                target_nodes = indices.flatten()
-                # stack to get (2, E) shape directly
-                mesh_edges_np = np.stack([source_nodes, target_nodes], axis=0)
-                mesh_edges = torch.from_numpy(mesh_edges_np).to(torch.long)
-
-                # load fields
-                fields, channels = [], {}
-                cnt = 0
-                for field_name in self.field_names:
-                    if h5f[f"node_fields/{field_name}"].ndim == 3:
-                        _field = torch.tensor(
-                            h5f[f"node_fields/{field_name}"][-1, :, :], dtype=self.dtype
+            file_path = osp.join(self.path, str(sample_id) + ".h5")
+            for attempt in range(1, H5_READ_ATTEMPTS + 1):
+                try:
+                    with h5py.File(file_path, "r", swmr=True) as h5f:
+                        # load mesh info
+                        mesh_cords_initial = torch.tensor(
+                            h5f["mesh/node_coords"][0, :, :], dtype=self.dtype
                         )
-                    else:
-                        _field = torch.tensor(
-                            h5f[f"node_fields/{field_name}"][-1, :], dtype=self.dtype
-                        ).unsqueeze(-1)
-                    fields.append(_field)
-                    channels[field_name] = slice(cnt, cnt + _field.shape[-1])
-                    cnt += _field.shape[-1]
-                fields = torch.cat(fields, dim=-1)
+                        mesh_coords_final = torch.tensor(
+                            h5f["mesh/node_coords"][-1, :, :], dtype=self.dtype
+                        )
+                        mesh_element_connectivity = torch.tensor(
+                            h5f["mesh/element_connectivity"][:, :], dtype=torch.long
+                        )
 
-                # load material if available
-                if "material" in h5f["node_fields"]:
-                    material = torch.tensor(
-                        h5f["node_fields/material"][-1, :], dtype=torch.int
-                    ).unsqueeze(-1)
+                        # load fields
+                        fields, channels = [], {}
+                        cnt = 0
+                        for field_name in self.field_names:
+                            if h5f[f"node_fields/{field_name}"].ndim == 3:
+                                _field = torch.tensor(
+                                    h5f[f"node_fields/{field_name}"][-1, :, :],
+                                    dtype=self.dtype,
+                                )
+                            else:
+                                _field = torch.tensor(
+                                    h5f[f"node_fields/{field_name}"][-1, :],
+                                    dtype=self.dtype,
+                                ).unsqueeze(-1)
+                            fields.append(_field)
+                            channels[field_name] = slice(cnt, cnt + _field.shape[-1])
+                            cnt += _field.shape[-1]
+                        fields = torch.cat(fields, dim=-1)
 
-                # build cond vector
-                row = self.metadata_df[self.metadata_df["sample_id"] == sample_id]
-                row = row.drop(columns="sample_id")
-                cond_np = row.iloc[0].to_numpy(dtype=np.float32)
-                cond = torch.from_numpy(cond_np).to(self.dtype)
+                        # load material if available
+                        has_material = "material" in h5f["node_fields"]
+                        if has_material:
+                            material = torch.tensor(
+                                h5f["node_fields/material"][-1, :], dtype=torch.int
+                            ).unsqueeze(-1)
+                    break
+                except FileNotFoundError:
+                    raise
+                except OSError as e:
+                    if attempt == H5_READ_ATTEMPTS:
+                        raise
+                    wait = H5_RETRY_WAIT_SECONDS * 2 ** (attempt - 1)
+                    tqdm.write(
+                        f"I/O error reading {file_path} "
+                        f"(attempt {attempt}/{H5_READ_ATTEMPTS}): {e}; "
+                        f"retrying in {wait:.0f}s"
+                    )
+                    time.sleep(wait)
 
-                # build sample
-                sample = {
-                    "cond": cond,
-                    "y": fields,
-                    "mesh_coords": mesh_cords_initial,
-                    "y_mesh_coords": mesh_coords_final,
-                    "edge_index": mesh_edges,
-                    "mesh_element_connectivity": mesh_element_connectivity,
-                    "sample_id": sample_id,
-                }
-                if "material" in h5f["node_fields"]:
-                    sample["mesh_material"] = material
-                data.append(sample)
+            mesh_cords_initial = (
+                mesh_cords_initial - mesh_cords_initial.min(dim=0, keepdim=True).values
+            )
+            mesh_coords_final = (
+                mesh_coords_final - mesh_coords_final.min(dim=0, keepdim=True).values
+            )
+
+            # build nearest neighbor graph
+            x0_np = mesh_cords_initial.cpu().numpy()
+            nbrs = NearestNeighbors(n_neighbors=5).fit(x0_np)
+            _, indices = nbrs.kneighbors(mesh_cords_initial)
+            # create source indices: [0,0,0,0,0, 1,1,1,1,1, ...]
+            source_nodes = np.repeat(np.arange(x0_np.shape[0]), indices.shape[1])
+            # flatten target indices: [n0_0, n0_1..., n1_0, n1_1...]
+            target_nodes = indices.flatten()
+            # stack to get (2, E) shape directly
+            mesh_edges_np = np.stack([source_nodes, target_nodes], axis=0)
+            mesh_edges = torch.from_numpy(mesh_edges_np).to(torch.long)
+
+            # build cond vector
+            row = self.metadata_df[self.metadata_df["sample_id"] == sample_id]
+            row = row.drop(columns="sample_id")
+            cond_np = row.iloc[0].to_numpy(dtype=np.float32)
+            cond = torch.from_numpy(cond_np).to(self.dtype)
+
+            # build sample
+            sample = {
+                "cond": cond,
+                "y": fields,
+                "mesh_coords": mesh_cords_initial,
+                "y_mesh_coords": mesh_coords_final,
+                "edge_index": mesh_edges,
+                "mesh_element_connectivity": mesh_element_connectivity,
+                "sample_id": sample_id,
+            }
+            if has_material:
+                sample["mesh_material"] = material
+            data.append(sample)
 
             cond_names = row.columns.to_list()
             conds = {name: i for i, name in enumerate(cond_names)}
